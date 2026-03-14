@@ -73,6 +73,9 @@ known-first-party = ["vinylid_ml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "integration: tests that download models or require network access",
+]
 
 [tool.pyright]
 pythonVersion = "3.11"
