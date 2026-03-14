@@ -37,6 +37,18 @@ _SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 __all__ = ["measure_single_image_latency"]
 
 
+def _sync_device() -> None:
+    """Synchronize the active accelerator to ensure async ops have completed.
+
+    No-op on CPU. Required for accurate wall-clock latency measurement on
+    devices with asynchronous execution (MPS, CUDA).
+    """
+    if torch.backends.mps.is_available():
+        torch.mps.synchronize()
+    elif torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
 def measure_single_image_latency(
     model: EmbeddingModel,
     image_path: Path,
@@ -47,9 +59,11 @@ def measure_single_image_latency(
     """Measure single-image inference latency for a model.
 
     Runs ``n_warmup`` forward passes (discarded for warmup), then ``n_timed``
-    timed passes. Reports p50, p95, p99 in milliseconds. Timing includes the
-    model forward pass and the MPS/CPU tensor transfer but not image I/O or
-    preprocessing.
+    timed passes. Reports p50, p95, p99 in milliseconds.
+
+    Device synchronization (MPS/CUDA) is performed before and after each
+    forward pass so that the timer captures real wall-clock latency rather
+    than just the time to enqueue async operations.
 
     Args:
         model: Loaded EmbeddingModel instance (any pooling/resolution variant).
@@ -67,11 +81,14 @@ def measure_single_image_latency(
 
     for _ in range(n_warmup):
         model.embed(batch)
+        _sync_device()
 
     times_ms: list[float] = []
     for _ in range(n_timed):
+        _sync_device()
         t0 = time.perf_counter()
         model.embed(batch)
+        _sync_device()
         times_ms.append((time.perf_counter() - t0) * 1000.0)
 
     times_ms.sort()
@@ -363,9 +380,10 @@ def main(argv: list[str] | None = None) -> None:
     results_dir: Path = (
         args.results_dir.resolve() if args.results_dir else Path.cwd() / "results"
     )
-    data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
-    manifest_path = data_dir / "manifest.parquet"
-    splits_path = data_dir / "splits.json"
+    # Derive manifest/splits from the same output_dir used by embed_gallery.py,
+    # so --output-dir is honoured consistently across the pipeline.
+    manifest_path = output_dir / "manifest.parquet"
+    splits_path = output_dir / "splits.json"
 
     model_ids: list[str] = [m.strip() for m in args.models.split(",") if m.strip()]
     logger.info(

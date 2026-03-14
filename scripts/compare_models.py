@@ -107,7 +107,9 @@ def _verdict_css_class(verdict: str) -> str:
         return "v-ok"
     if verdict == "fine-tuning likely needed":
         return "v-likely"
-    return "v-req"
+    if verdict == "fine-tuning required":
+        return "v-req"
+    return "na"  # N/A or any unexpected value
 
 
 def _load_summary_csv(results_dir: Path) -> dict[str, dict[str, str]]:
