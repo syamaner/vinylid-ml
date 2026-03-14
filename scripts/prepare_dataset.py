@@ -55,8 +55,8 @@ def build_manifest(
         cover_types = _load_cover_types(db_path)
         logger.info("cover_types_loaded", num_entries=len(cover_types))
 
-    records: list[dict] = []
-    errors: list[dict] = []
+    records: list[dict[str, str | int]] = []
+    errors: list[dict[str, str]] = []
     total_files = 0
 
     for artist_dir in sorted(gallery_root.iterdir()):
@@ -74,10 +74,12 @@ def build_manifest(
                 try:
                     meta = extract_metadata(image_file)
                 except (ExifExtractionError, FileNotFoundError, OSError, ValueError) as e:
-                    errors.append({
-                        "image_path": str(image_file),
-                        "error": str(e),
-                    })
+                    errors.append(
+                        {
+                            "image_path": str(image_file),
+                            "error": str(e),
+                        }
+                    )
                     continue
 
                 # Deterministic album_id from directory structure
@@ -85,23 +87,23 @@ def build_manifest(
 
                 # Look up CoverType from DB using filename pattern
                 # Filename: {release_uuid}-{caa_image_id}.{ext}
-                cover_type = _match_cover_type(
-                    meta.release_id, image_file.name, cover_types
-                )
+                cover_type = _match_cover_type(meta.release_id, image_file.name, cover_types)
 
-                records.append({
-                    "image_path": str(image_file),
-                    "release_id": meta.release_id,
-                    "artist": meta.artist,
-                    "album": meta.album,
-                    "artist_dir": artist_dir.name,
-                    "album_dir": album_dir.name,
-                    "album_id": album_id,
-                    "width": meta.width,
-                    "height": meta.height,
-                    "format": meta.image_format,
-                    "cover_type": cover_type,
-                })
+                records.append(
+                    {
+                        "image_path": str(image_file),
+                        "release_id": meta.release_id,
+                        "artist": meta.artist,
+                        "album": meta.album,
+                        "artist_dir": artist_dir.name,
+                        "album_dir": album_dir.name,
+                        "album_id": album_id,
+                        "width": meta.width,
+                        "height": meta.height,
+                        "format": meta.image_format,
+                        "cover_type": cover_type,
+                    }
+                )
 
                 if total_files % 5000 == 0:
                     logger.info("progress", processed=total_files, records=len(records))
@@ -155,12 +157,12 @@ def build_splits(
     np.random.seed(seed)
 
     # Count images per album
-    album_counts = manifest.groupby("album_id").size().to_dict()
-    all_album_ids = sorted(album_counts.keys())
+    album_counts: dict[str, int] = manifest.groupby("album_id").size().to_dict()  # type: ignore[assignment]
+    all_album_ids: list[str] = sorted(album_counts.keys())
 
     if prefer_single_to_train:
-        single_albums = [aid for aid in all_album_ids if album_counts[aid] == 1]
-        multi_albums = [aid for aid in all_album_ids if album_counts[aid] > 1]
+        single_albums: list[str] = [aid for aid in all_album_ids if album_counts[aid] == 1]
+        multi_albums: list[str] = [aid for aid in all_album_ids if album_counts[aid] > 1]
     else:
         single_albums = []
         multi_albums = list(all_album_ids)
@@ -169,7 +171,7 @@ def build_splits(
     artist_albums: dict[str, list[str]] = defaultdict(list)
     album_artist = manifest.drop_duplicates("album_id").set_index("album_id")["artist_dir"]
     for aid in multi_albums:
-        artist = album_artist.get(aid, "unknown")
+        artist = str(album_artist.get(aid, "unknown"))
         artist_albums[artist].append(aid)
 
     # Shuffle within each artist group
@@ -210,7 +212,7 @@ def build_splits(
         splits[aid] = "train"
 
     # Verify
-    counts = defaultdict(int)
+    counts: dict[str, int] = defaultdict(int)
     for s in splits.values():
         counts[s] += 1
 
@@ -250,7 +252,7 @@ def integrate_test_set(
 
     # Extract just the filename from Windows paths
     df["filename"] = df["FilePath"].apply(
-        lambda p: PureWindowsPath(p).name
+        lambda p: PureWindowsPath(str(p)).name  # type: ignore[reportUnknownLambdaType]
     )
 
     # Check which files actually exist in the test directory
@@ -277,9 +279,7 @@ def integrate_test_set(
             match_scores.append(0)
             continue
 
-        best_id, best_score = _fuzzy_match_album(
-            artist, album, gallery_lookup
-        )
+        best_id, best_score = _fuzzy_match_album(artist, album, gallery_lookup)
         matched_ids.append(best_id)
         match_scores.append(best_score)
 
@@ -325,7 +325,9 @@ def print_eda_stats(manifest: pd.DataFrame, splits: dict[str, str]) -> None:
     print(f"  6+ images: {(album_counts >= 6).sum():,}")
 
     # Resolution distribution
-    max_dim = np.maximum(manifest["width"].values, manifest["height"].values)
+    width_arr = np.asarray(manifest["width"].values, dtype=np.int64)
+    height_arr = np.asarray(manifest["height"].values, dtype=np.int64)
+    max_dim = np.maximum(width_arr, height_arr)
     print("\nImage resolution (max dimension):")
     print(f"  Min: {max_dim.min()}px")
     print(f"  Median: {int(np.median(max_dim))}px")
@@ -391,9 +393,7 @@ def _load_cover_types(db_path: Path) -> dict[str, str]:
     return result
 
 
-def _match_cover_type(
-    release_id: str, filename: str, cover_types: dict[str, str]
-) -> str:
+def _match_cover_type(release_id: str, filename: str, cover_types: dict[str, str]) -> str:
     """Try to match an image to a CoverType from the DB.
 
     Args:
@@ -444,8 +444,8 @@ def _fuzzy_match_album(
 
     for (g_artist, g_album), album_id in gallery_lookup.items():
         # Combined score: weighted average of artist + album similarity
-        artist_score = fuzz.ratio(artist_lower, g_artist)
-        album_score = fuzz.ratio(album_lower, g_album)
+        artist_score: int = fuzz.ratio(artist_lower, g_artist)  # type: ignore[reportUnknownMemberType]
+        album_score: int = fuzz.ratio(album_lower, g_album)  # type: ignore[reportUnknownMemberType]
         # Album match is more important — weight it higher
         combined = int(artist_score * 0.3 + album_score * 0.7)
 
@@ -521,9 +521,7 @@ def main() -> None:
     test_sample_dir = _resolve(paths["test_sample"])
     test_sample_csv = test_sample_dir / "test_data.csv"
     if test_sample_csv.exists():
-        test_sample = integrate_test_set(
-            test_sample_csv, test_sample_dir, manifest, name="sample"
-        )
+        test_sample = integrate_test_set(test_sample_csv, test_sample_dir, manifest, name="sample")
         test_sample.to_csv(output_dir / "test_sample_matched.csv", index=False)
 
     # Print EDA

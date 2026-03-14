@@ -88,11 +88,13 @@ class TestExtractMetadata:
         """Missing Artist (315) and XPComment (42112) don't raise — they default to empty."""
         img = Image.new("RGB", (80, 60))
         exif = img.getexif()
-        exif[33432] = json.dumps({
-            "ReleaseId": "uuid-123",
-            "Artist": "Foo",
-            "Album": "Bar",
-        })
+        exif[33432] = json.dumps(
+            {
+                "ReleaseId": "uuid-123",
+                "Artist": "Foo",
+                "Album": "Bar",
+            }
+        )
         # No tag 315 or 42112
         path = tmp_path / "minimal.jpg"
         img.save(path, exif=exif.tobytes())
@@ -127,8 +129,9 @@ class TestExtractMetadataRealImages:
 
     def test_resolution_range(self, real_gallery_images: list[Path]) -> None:
         """Fixtures should span a range of resolutions."""
-        sizes = [max(extract_metadata(p).width, extract_metadata(p).height)
-                 for p in real_gallery_images]
+        sizes = [
+            max(extract_metadata(p).width, extract_metadata(p).height) for p in real_gallery_images
+        ]
         assert min(sizes) < 400, "Expected at least one small image (<400px)"
         assert max(sizes) >= 2000, "Expected at least one large image (>=2000px)"
 

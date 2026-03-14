@@ -109,12 +109,14 @@ def get_eval_transforms(input_size: int = 224) -> transforms.Compose:
     Returns:
         Composed transform: Resize → CenterCrop → ToTensor → Normalize.
     """
-    return transforms.Compose([
-        transforms.Resize(input_size, interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.CenterCrop(input_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    return transforms.Compose(
+        [
+            transforms.Resize(input_size, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.CenterCrop(input_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ]
+    )
 
 
 def get_train_transforms(input_size: int = 224) -> transforms.Compose:
@@ -126,16 +128,18 @@ def get_train_transforms(input_size: int = 224) -> transforms.Compose:
     Returns:
         Composed transform with random augmentations suitable for album covers.
     """
-    return transforms.Compose([
-        transforms.RandomResizedCrop(input_size, scale=(0.7, 1.0)),
-        transforms.RandomPerspective(distortion_scale=0.3, p=0.5),
-        transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2, hue=0.05),
-        transforms.RandomGrayscale(p=0.05),
-        transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
-        # No horizontal flip — album covers should not be flipped
-        transforms.ToTensor(),
-        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    return transforms.Compose(
+        [
+            transforms.RandomResizedCrop(input_size, scale=(0.7, 1.0)),
+            transforms.RandomPerspective(distortion_scale=0.3, p=0.5),
+            transforms.ColorJitter(brightness=0.3, contrast=0.2, saturation=0.2, hue=0.05),
+            transforms.RandomGrayscale(p=0.05),
+            transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
+            # No horizontal flip — album covers should not be flipped
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ]
+    )
 
 
 class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
@@ -161,9 +165,7 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
         gallery_root: Path,
     ) -> None:
         # Filter manifest to images belonging to albums in the requested split
-        album_ids_in_split = {
-            album_id for album_id, s in splits.items() if s == split_name
-        }
+        album_ids_in_split = {album_id for album_id, s in splits.items() if s == split_name}
         mask = manifest["album_id"].astype(str).isin(album_ids_in_split)
         self._df = manifest[mask].reset_index(drop=True)
         self._transform = transform
@@ -171,9 +173,7 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
 
         # Build album_id -> integer label mapping (deterministic)
         unique_albums = sorted(self._df["album_id"].unique())
-        self._album_to_label: dict[str, int] = {
-            str(aid): i for i, aid in enumerate(unique_albums)
-        }
+        self._album_to_label: dict[str, int] = {str(aid): i for i, aid in enumerate(unique_albums)}
 
         logger.info(
             "dataset_created",

@@ -106,25 +106,19 @@ def extract_metadata(image_path: Path) -> AlbumMetadata:
     # Extract Copyright JSON tag (primary metadata source)
     copyright_raw = exif.get(_TAG_COPYRIGHT)
     if copyright_raw is None:
-        raise ExifExtractionError(
-            f"Missing Copyright tag ({_TAG_COPYRIGHT}) in {image_path}"
-        )
+        raise ExifExtractionError(f"Missing Copyright tag ({_TAG_COPYRIGHT}) in {image_path}")
 
     try:
         copyright_json = json.loads(copyright_raw)
     except (json.JSONDecodeError, TypeError) as e:
-        raise ExifExtractionError(
-            f"Malformed Copyright JSON in {image_path}: {e}"
-        ) from e
+        raise ExifExtractionError(f"Malformed Copyright JSON in {image_path}: {e}") from e
 
     release_id = copyright_json.get("ReleaseId", "")
     artist = copyright_json.get("Artist", "")
     album = copyright_json.get("Album", "")
 
     if not release_id:
-        raise ExifExtractionError(
-            f"Empty ReleaseId in Copyright JSON for {image_path}"
-        )
+        raise ExifExtractionError(f"Empty ReleaseId in Copyright JSON for {image_path}")
 
     # Extract supplementary tags
     artist_tag = exif.get(_TAG_ARTIST, "")

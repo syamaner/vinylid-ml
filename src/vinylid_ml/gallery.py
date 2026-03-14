@@ -270,13 +270,33 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
 
     embeddings: NDArray[np.floating] = np.load(npy_path)
     with meta_path.open() as f:
-        metadata: dict[str, object] = json.load(f)
+        metadata = json.load(f)  # Returns Any — validated below
 
-    image_paths = metadata["image_paths"]
-    album_ids = metadata["album_ids"]
-    if not isinstance(image_paths, list) or not isinstance(album_ids, list):
-        msg = f"Expected lists for image_paths and album_ids in {meta_path}"
-        raise TypeError(msg)
+    # metadata is Any from json.load — validate list types before coercion.
+    # Check for list (not str) to prevent single-string iteration bugs.
+    try:
+        raw_paths = metadata["image_paths"]
+        raw_albums = metadata["album_ids"]
+    except (TypeError, KeyError) as e:
+        msg = f"Missing or invalid metadata fields in {meta_path}: {e}"
+        raise TypeError(msg) from e
+
+    if not isinstance(raw_paths, list):
+        raise TypeError(
+            f"Expected list for 'image_paths' in {meta_path}, "
+            f"got {type(raw_paths).__name__}"
+        )
+    if not isinstance(raw_albums, list):
+        raise TypeError(
+            f"Expected list for 'album_ids' in {meta_path}, "
+            f"got {type(raw_albums).__name__}"
+        )
+
+    # isinstance narrows Any → list[Unknown] in pyright strict mode;
+    # items are JSON scalars — str() coercion is safe.
+    image_paths: list[str] = [str(p) for p in raw_paths]  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    album_ids: list[str] = [str(a) for a in raw_albums]  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+
     if len(image_paths) != embeddings.shape[0]:
         msg = (
             f"Metadata/embedding mismatch: {len(image_paths)} paths "
@@ -289,7 +309,7 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
         image_paths=image_paths,
         album_ids=album_ids,
         model_id=str(metadata["model_id"]),
-        embedding_dim=int(metadata["embedding_dim"]),  # type: ignore[arg-type]
+        embedding_dim=int(metadata["embedding_dim"]),
     )
 
     logger.info(

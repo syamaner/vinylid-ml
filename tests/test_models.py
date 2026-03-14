@@ -5,6 +5,11 @@ Organized into:
 - Integration tests: actual embedding extraction (downloads models on first run)
 """
 
+# pyright: reportPrivateUsage=false
+# pyright: reportUnknownMemberType=false
+# pyright: reportUnknownVariableType=false
+# pyright: reportUnknownArgumentType=false
+
 from __future__ import annotations
 
 import pytest

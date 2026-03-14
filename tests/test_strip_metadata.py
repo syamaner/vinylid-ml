@@ -67,7 +67,9 @@ class TestStripMetadata:
 class TestStripMetadataRealImages:
     """Integration tests using real album cover images from fixtures."""
 
-    def test_all_fixtures_strip_cleanly(self, real_gallery_images: list[Path], tmp_path: Path) -> None:
+    def test_all_fixtures_strip_cleanly(
+        self, real_gallery_images: list[Path], tmp_path: Path
+    ) -> None:
         """Every fixture image should strip to a clean JPEG with no EXIF."""
         for img_path in real_gallery_images:
             output = tmp_path / f"stripped_{img_path.stem}.jpg"
@@ -78,7 +80,9 @@ class TestStripMetadataRealImages:
             assert check.format == "JPEG"
             check.close()
 
-    def test_pixel_dimensions_preserved(self, real_gallery_images: list[Path], tmp_path: Path) -> None:
+    def test_pixel_dimensions_preserved(
+        self, real_gallery_images: list[Path], tmp_path: Path
+    ) -> None:
         """Stripped output should match original dimensions."""
         for img_path in real_gallery_images:
             original = Image.open(img_path)
