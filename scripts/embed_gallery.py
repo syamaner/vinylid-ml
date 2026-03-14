@@ -21,47 +21,11 @@ import yaml
 from vinylid_ml.dataset import load_manifest, load_splits
 from vinylid_ml.gallery import GalleryImageDataset, embed_dataset, save_embeddings
 from vinylid_ml.models import (
-    DINOv2Embedder,
-    EmbeddingModel,
-    OpenCLIPEmbedder,
-    SSCDEmbedder,
+    create_model,
 )
 
 logger = structlog.get_logger()
 
-
-def _create_model(model_id: str) -> EmbeddingModel:
-    """Instantiate an EmbeddingModel from a model ID string.
-
-    Args:
-        model_id: Model identifier (e.g., "A1-dinov2-cls", "A2-openclip").
-
-    Returns:
-        Configured EmbeddingModel instance.
-
-    Raises:
-        ValueError: If model_id is not recognized.
-    """
-    match model_id:
-        case "A1-dinov2-cls":
-            return DINOv2Embedder(pooling="cls")
-        case "A1-dinov2-gem":
-            return DINOv2Embedder(pooling="gem")
-        case "A1-dinov2-cls-518":
-            return DINOv2Embedder(pooling="cls", input_size=518)
-        case "A1-dinov2-gem-518":
-            return DINOv2Embedder(pooling="gem", input_size=518)
-        case "A2-openclip":
-            return OpenCLIPEmbedder()
-        case "A4-sscd":
-            return SSCDEmbedder()
-        case _:
-            msg = (
-                f"Unknown model_id: '{model_id}'. Available: "
-                "A1-dinov2-cls, A1-dinov2-gem, A1-dinov2-cls-518, A1-dinov2-gem-518, "
-                "A2-openclip, A4-sscd"
-            )
-            raise ValueError(msg)
 
 
 def _filter_manifest_by_split(
@@ -183,7 +147,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(0)
 
     # Create model
-    model = _create_model(args.model)
+    model = create_model(args.model)
 
     # Create dataset with model-specific transforms
     dataset = GalleryImageDataset(filtered, gallery_root, model.get_transforms())
