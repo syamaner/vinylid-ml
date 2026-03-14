@@ -6,8 +6,17 @@ Use this skill before every commit. All steps are mandatory — do not skip any.
 ```bash
 python -m pytest tests/ -v --tb=short
 ```
-- All tests must pass (0 failures)
+- **All tests must pass — 0 failures AND 0 errors. Non-negotiable. Do not commit otherwise.**
+- The default run excludes `@pytest.mark.integration` tests (which require network/model downloads).
+  Run integration tests explicitly when needed: `python -m pytest -m integration`
 - Review any new warnings — address if related to new code
+
+### Integration vs Unit test rules
+- Unit tests: fast, no network, no model downloads, always run in CI and locally.
+  Must use mocks/fixtures for external resources.
+- Integration tests: marked `@pytest.mark.integration`, require network or cached model files.
+  **All newly added tests must be unit tests by default unless they genuinely require external resources.**
+  If a test requires downloading a model or calling an external API, it MUST be marked `@pytest.mark.integration`.
 
 ## 2. Run Linter
 ```bash
