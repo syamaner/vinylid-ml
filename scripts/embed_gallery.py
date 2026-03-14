@@ -14,17 +14,13 @@ import sys
 import time
 from pathlib import Path
 
-# Add project root to path for script imports
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_PROJECT_ROOT / "src"))
+import pandas as pd
+import structlog
+import yaml
 
-import pandas as pd  # noqa: E402
-import structlog  # noqa: E402
-import yaml  # noqa: E402
-
-from vinylid_ml.dataset import load_manifest, load_splits  # noqa: E402
-from vinylid_ml.gallery import GalleryImageDataset, embed_dataset, save_embeddings  # noqa: E402
-from vinylid_ml.models import (  # noqa: E402
+from vinylid_ml.dataset import load_manifest, load_splits
+from vinylid_ml.gallery import GalleryImageDataset, embed_dataset, save_embeddings
+from vinylid_ml.models import (
     DINOv2Embedder,
     EmbeddingModel,
     OpenCLIPEmbedder,
@@ -146,8 +142,10 @@ def main(argv: list[str] | None = None) -> None:
     with config_path.open() as f:
         config = yaml.safe_load(f)
 
-    gallery_root = Path(config["paths"]["gallery_root"])
     config_dir = config_path.parent
+    gallery_root = Path(config["paths"]["gallery_root"])
+    if not gallery_root.is_absolute():
+        gallery_root = (config_dir / gallery_root).resolve()
 
     # Resolve output dir
     if args.output_dir is not None:

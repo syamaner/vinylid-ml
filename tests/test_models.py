@@ -79,16 +79,25 @@ class TestModelProperties:
     """Test model wrapper properties without loading actual models."""
 
     def test_dinov2_cls_model_id(self) -> None:
-        """DINOv2 CLS wrapper reports correct model ID."""
+        """DINOv2 CLS wrapper at default 224px reports correct model ID."""
         model = DINOv2Embedder.__new__(DINOv2Embedder)
         model._pooling = "cls"
+        model._input_size = 224
         assert model.model_id == "A1-dinov2-cls"
 
     def test_dinov2_gem_model_id(self) -> None:
-        """DINOv2 GeM wrapper reports correct model ID."""
+        """DINOv2 GeM wrapper at default 224px reports correct model ID."""
         model = DINOv2Embedder.__new__(DINOv2Embedder)
         model._pooling = "gem"
+        model._input_size = 224
         assert model.model_id == "A1-dinov2-gem"
+
+    def test_dinov2_518_model_id(self) -> None:
+        """DINOv2 CLS at 518px includes resolution in model ID."""
+        model = DINOv2Embedder.__new__(DINOv2Embedder)
+        model._pooling = "cls"
+        model._input_size = 518
+        assert model.model_id == "A1-dinov2-cls-518"
 
     def test_dinov2_embedding_dim(self) -> None:
         """DINOv2 wrapper reports 384-dim embeddings."""

@@ -86,8 +86,9 @@ class GalleryImageDataset(Dataset[tuple[torch.Tensor, str, str]]):
         if not image_path.is_absolute():
             image_path = self._gallery_root / image_path
 
-        img = Image.open(image_path).convert("RGB")
-        tensor: torch.Tensor = self._transform(img)  # type: ignore[assignment]
+        with Image.open(image_path) as img:
+            img_rgb = img.convert("RGB")
+            tensor: torch.Tensor = self._transform(img_rgb)  # type: ignore[assignment]
 
         return tensor, str(row["image_path"]), str(row["album_id"])
 
@@ -130,11 +131,22 @@ def embed_dataset(
         pin_memory=use_pin_memory,
     )
 
+    total_images = len(dataset)
+
+    if total_images == 0:
+        logger.warning("embed_dataset_empty", model_id=model.model_id)
+        return EmbeddingResult(
+            embeddings=np.empty((0, model.embedding_dim), dtype=np.float16),
+            image_paths=[],
+            album_ids=[],
+            model_id=model.model_id,
+            embedding_dim=model.embedding_dim,
+        )
+
     all_embeddings: list[np.ndarray] = []
     all_paths: list[str] = []
     all_album_ids: list[str] = []
 
-    total_images = len(dataset)
     num_batches = (total_images + batch_size - 1) // batch_size
 
     logger.info(
@@ -262,8 +274,15 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
 
     image_paths = metadata["image_paths"]
     album_ids = metadata["album_ids"]
-    assert isinstance(image_paths, list)
-    assert isinstance(album_ids, list)
+    if not isinstance(image_paths, list) or not isinstance(album_ids, list):
+        msg = f"Expected lists for image_paths and album_ids in {meta_path}"
+        raise TypeError(msg)
+    if len(image_paths) != embeddings.shape[0]:
+        msg = (
+            f"Metadata/embedding mismatch: {len(image_paths)} paths "
+            f"vs {embeddings.shape[0]} embeddings in {model_dir}"
+        )
+        raise ValueError(msg)
 
     result = EmbeddingResult(
         embeddings=embeddings,

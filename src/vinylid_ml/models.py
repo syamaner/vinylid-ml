@@ -164,7 +164,10 @@ class DINOv2Embedder(EmbeddingModel):
 
     @property
     def model_id(self) -> str:
-        return f"A1-dinov2-{self._pooling}"
+        base = f"A1-dinov2-{self._pooling}"
+        if self._input_size != 224:
+            return f"{base}-{self._input_size}"
+        return base
 
     @property
     def embedding_dim(self) -> int:
