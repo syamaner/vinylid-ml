@@ -1,8 +1,8 @@
 """HTML evaluation report generation with interactive Plotly charts.
 
-Produces a self-contained HTML report for each evaluation run, including
-metrics summary, stratified breakdowns, NN ambiguity histogram, and
-confidence calibration curve.
+Produces an HTML report (charts require CDN access to plotly.js) for
+each evaluation run, including metrics summary, stratified breakdowns,
+NN ambiguity histogram, and confidence calibration curve.
 """
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
@@ -15,9 +15,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-import plotly.graph_objects as go  # type: ignore[import-untyped]
 import structlog
-from jinja2 import BaseLoader, Environment
+
+try:
+    import plotly.graph_objects as go  # type: ignore[import-untyped]
+    from jinja2 import BaseLoader, Environment
+    from markupsafe import Markup
+except ImportError as exc:
+    _msg = (
+        "Report generation requires the 'eval' extra. "
+        "Install with: pip install -e '.[eval]'"
+    )
+    raise ImportError(_msg) from exc
 
 if TYPE_CHECKING:
     from vinylid_ml.eval_metrics import (
@@ -372,11 +381,17 @@ def _build_calibration_chart(calibration: CalibrationResult) -> str:
     valid_y = [float(y) for y, v in zip(calibration.bin_accuracies, valid_mask, strict=True) if v]
     valid_counts = [int(c) for c, v in zip(calibration.bin_counts, valid_mask, strict=True) if v]
 
-    # Ideal diagonal
+    # Derive axis range from actual calibration data (cosine similarity can be [-1, 1])
+    x_min = float(calibration.bin_edges[0])
+    x_max = float(calibration.bin_edges[-1])
+
+    # Ideal diagonal — perfect calibration: accuracy = score (clamped to [0, 1])
+    ideal_lo = max(0.0, x_min)
+    ideal_hi = min(1.0, x_max)
     fig.add_trace(
         go.Scatter(
-            x=[0, 1],
-            y=[0, 1],
+            x=[ideal_lo, ideal_hi],
+            y=[ideal_lo, ideal_hi],
             mode="lines",
             line={"dash": "dash", "color": "#4b5563"},
             name="Ideal",
@@ -402,7 +417,7 @@ def _build_calibration_chart(calibration: CalibrationResult) -> str:
         title="Confidence Calibration Curve",
         xaxis_title="Top-1 Similarity Score",
         yaxis_title="Accuracy",
-        xaxis_range=[0, 1],
+        xaxis_range=[x_min - 0.02, x_max + 0.02],
         yaxis_range=[0, 1.05],
         **_PLOTLY_LAYOUT_DEFAULTS,  # type: ignore[arg-type]
     )
@@ -422,7 +437,10 @@ def generate_report(
     num_gallery: int,
     git_sha: str | None = None,
 ) -> Path:
-    """Generate a self-contained HTML evaluation report.
+    """Generate an HTML evaluation report with interactive Plotly charts.
+
+    Charts load Plotly JS from a CDN and require network access to render
+    correctly.
 
     Args:
         output_dir: Directory to write report.html into.
@@ -439,12 +457,12 @@ def generate_report(
     Returns:
         Path to the generated report.html file.
     """
-    env = Environment(loader=BaseLoader(), autoescape=False)
+    env = Environment(loader=BaseLoader(), autoescape=True)
     template = env.from_string(_REPORT_TEMPLATE)
 
-    stratified_html = _build_stratified_chart(stratified)
-    nn_ambiguity_html = _build_nn_ambiguity_chart(nn_ambiguity) if nn_ambiguity else ""
-    calibration_html = _build_calibration_chart(calibration) if calibration else ""
+    stratified_html = Markup(_build_stratified_chart(stratified))
+    nn_ambiguity_html = Markup(_build_nn_ambiguity_chart(nn_ambiguity)) if nn_ambiguity else ""
+    calibration_html = Markup(_build_calibration_chart(calibration)) if calibration else ""
 
     html = template.render(
         model_id=model_id,

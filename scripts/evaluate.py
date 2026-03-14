@@ -68,7 +68,6 @@ def _build_gallery_query_split(
     album_ids: list[str],
     manifest: pd.DataFrame,
     image_paths: list[str],
-    gallery_root: Path,
 ) -> GalleryQuerySplit:
     """Split embeddings into gallery (1 canonical per album) and queries.
 
@@ -79,9 +78,8 @@ def _build_gallery_query_split(
     Args:
         embeddings: Shape (N, D). All embeddings for the split.
         album_ids: Album ID strings aligned with embeddings.
-        manifest: Full manifest DataFrame (with width/height columns).
+        manifest: Manifest DataFrame (with width/height columns) for the split.
         image_paths: Image path strings aligned with embeddings.
-        gallery_root: Root directory for resolving image paths.
 
     Returns:
         GalleryQuerySplit with separated gallery and query data.
@@ -280,11 +278,15 @@ def _append_summary_csv(
         "num_queries",
     ]
 
-    retrieval = metrics_dict.get("retrieval", {})
-    if not isinstance(retrieval, dict):
-        retrieval = {}
+    retrieval_raw = metrics_dict.get("retrieval", {})
+    # isinstance narrows object → dict[Unknown, Unknown]; extract values explicitly.
+    retrieval: dict[str, object] = {}
+    if isinstance(retrieval_raw, dict):
+        for k, v in retrieval_raw.items():  # type: ignore[reportUnknownVariableType]
+            if isinstance(k, str):
+                retrieval[k] = v
 
-    row = {
+    row: dict[str, object] = {
         "model_id": model_id,
         "timestamp": timestamp,
         "recall_at_1": retrieval.get("recall_at_1", ""),
@@ -410,9 +412,8 @@ def main(argv: list[str] | None = None) -> None:
     split = _build_gallery_query_split(
         embedding_result.embeddings,
         embedding_result.album_ids,
-        manifest,
+        split_manifest,
         embedding_result.image_paths,
-        gallery_root,
     )
 
     num_gallery = len(split.gallery_labels)

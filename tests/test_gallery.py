@@ -5,6 +5,10 @@ Organized into:
 - Integration tests: actual embedding extraction (downloads model on first run)
 """
 
+# pyright: reportUnknownMemberType=false
+# pyright: reportUnknownLambdaType=false
+# pyright: reportUnknownArgumentType=false
+
 from __future__ import annotations
 
 import json

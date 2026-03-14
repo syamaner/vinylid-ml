@@ -272,14 +272,30 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
     with meta_path.open() as f:
         metadata = json.load(f)  # Returns Any — validated below
 
-    # metadata is Any from json.load — iterate directly to produce list[str]
-    # (isinstance narrows to list[Unknown] which causes strict-mode issues)
+    # metadata is Any from json.load — validate list types before coercion.
+    # Check for list (not str) to prevent single-string iteration bugs.
     try:
-        image_paths: list[str] = [str(p) for p in metadata["image_paths"]]
-        album_ids: list[str] = [str(a) for a in metadata["album_ids"]]
+        raw_paths = metadata["image_paths"]
+        raw_albums = metadata["album_ids"]
     except (TypeError, KeyError) as e:
-        msg = f"Invalid image_paths or album_ids in {meta_path}: {e}"
+        msg = f"Missing or invalid metadata fields in {meta_path}: {e}"
         raise TypeError(msg) from e
+
+    if not isinstance(raw_paths, list):
+        raise TypeError(
+            f"Expected list for 'image_paths' in {meta_path}, "
+            f"got {type(raw_paths).__name__}"
+        )
+    if not isinstance(raw_albums, list):
+        raise TypeError(
+            f"Expected list for 'album_ids' in {meta_path}, "
+            f"got {type(raw_albums).__name__}"
+        )
+
+    # isinstance narrows Any → list[Unknown] in pyright strict mode;
+    # items are JSON scalars — str() coercion is safe.
+    image_paths: list[str] = [str(p) for p in raw_paths]  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    album_ids: list[str] = [str(a) for a in raw_albums]  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
     if len(image_paths) != embeddings.shape[0]:
         msg = (

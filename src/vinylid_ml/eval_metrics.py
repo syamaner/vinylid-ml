@@ -286,11 +286,19 @@ def compute_nn_ambiguity(
         NNAmbiguityResult with per-item NN similarities and metadata.
 
     Raises:
-        ValueError: If embeddings and labels have mismatched lengths.
+        ValueError: If embeddings and labels have mismatched lengths, or if
+            fewer than 2 distinct album labels are present.
     """
     n = len(gallery_embeddings)
     if len(gallery_labels) != n:
         raise ValueError(f"gallery_labels length {len(gallery_labels)} != embeddings count {n}")
+
+    unique_labels = set(gallery_labels.tolist())
+    if len(unique_labels) < 2:
+        raise ValueError(
+            "compute_nn_ambiguity requires at least 2 distinct album labels, "
+            f"got {len(unique_labels)}"
+        )
 
     if album_image_counts is None:
         album_image_counts = {}

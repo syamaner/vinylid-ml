@@ -12,7 +12,9 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import structlog
@@ -53,7 +55,9 @@ def augment_perspective(img: Image.Image, max_angle: float = 30.0) -> Image.Imag
         h,
         [random.randint(-max_offset, max_offset) for _ in range(8)],
     )
-    return img.transform((w, h), Image.Transform.PERSPECTIVE, coeffs, Image.Resampling.BICUBIC)
+    return img.transform(  # type: ignore[reportUnknownMemberType]
+        (w, h), Image.Transform.PERSPECTIVE, coeffs, Image.Resampling.BICUBIC
+    )
 
 
 def augment_brightness_contrast(
@@ -196,9 +200,9 @@ def generate_augmented_queries(
     image_path: Path,
     output_dir: Path,
     album_id: str,
-    config: dict,
+    config: dict[str, Any],
     seed: int = 42,
-) -> list[dict]:
+) -> list[dict[str, str | int]]:
     """Generate augmented variants for a single image.
 
     Args:
@@ -216,25 +220,34 @@ def generate_augmented_queries(
 
     img = Image.open(image_path).convert("RGB")
     stem = image_path.stem
-    records = []
+    records: list[dict[str, str | int]] = []
 
-    augmenters = {
-        "perspective": lambda im: augment_perspective(im, config.get("perspective_max_angle", 30)),
-        "brightness_contrast": lambda im: augment_brightness_contrast(
-            im, config.get("brightness_range", 0.30), config.get("contrast_range", 0.20)
+    augmenters: dict[str, Callable[[Image.Image], Image.Image]] = {
+        "perspective": lambda im: augment_perspective(
+            im, float(config.get("perspective_max_angle", 30))
         ),
-        "blur": lambda im: augment_blur(im, tuple(config.get("blur_sigma_range", [0.5, 2.0]))),
-        "crop": lambda im: augment_crop(im, tuple(config.get("crop_scale_range", [0.70, 0.90]))),
-        "noise": lambda im: augment_noise(im, tuple(config.get("noise_sigma_range", [5, 25]))),
+        "brightness_contrast": lambda im: augment_brightness_contrast(
+            im, float(config.get("brightness_range", 0.30)),
+            float(config.get("contrast_range", 0.20)),
+        ),
+        "blur": lambda im: augment_blur(
+            im, tuple(config.get("blur_sigma_range", [0.5, 2.0]))  # type: ignore[arg-type]
+        ),
+        "crop": lambda im: augment_crop(
+            im, tuple(config.get("crop_scale_range", [0.70, 0.90]))  # type: ignore[arg-type]
+        ),
+        "noise": lambda im: augment_noise(
+            im, tuple(config.get("noise_sigma_range", [5, 25]))  # type: ignore[arg-type]
+        ),
         "downscale": lambda im: augment_downscale(
-            im, tuple(config.get("downscale_range", [400, 600]))
+            im, tuple(config.get("downscale_range", [400, 600]))  # type: ignore[arg-type]
         ),
     }
 
     if config.get("glare_enabled", True):
         augmenters["glare"] = augment_glare
 
-    n_variants = config.get("variants_per_image", 5)
+    n_variants: int = int(config.get("variants_per_image", 5))
 
     # Cycle through augmentation types
     aug_names = list(augmenters.keys())
@@ -281,7 +294,7 @@ def _find_perspective_coeffs(w: int, h: int, offsets: list[int]) -> tuple[float,
     )
 
     # Solve for perspective coefficients
-    matrix = []
+    matrix: list[list[float]] = []
     for s, d in zip(src, dst, strict=True):
         matrix.append([d[0], d[1], 1, 0, 0, 0, -s[0] * d[0], -s[0] * d[1]])
         matrix.append([0, 0, 0, d[0], d[1], 1, -s[1] * d[0], -s[1] * d[1]])
@@ -327,13 +340,14 @@ def main() -> None:
         split_output = args.output_dir / split_name
         split_output.mkdir(parents=True, exist_ok=True)
 
-        all_records = []
+        all_records: list[dict[str, str | int]] = []
         for idx, (_, row) in enumerate(split_df.iterrows()):
             image_path = Path(row["image_path"])
-            per_image_seed = aug_config.get("seed", 42) + idx
+            per_image_seed = int(aug_config.get("seed", 42)) + idx
 
             records = generate_augmented_queries(
-                image_path, split_output, row["album_id"], aug_config, seed=per_image_seed
+                image_path, split_output, str(row["album_id"]), aug_config,
+                seed=per_image_seed,
             )
             all_records.extend(records)
 

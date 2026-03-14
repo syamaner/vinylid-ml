@@ -1,5 +1,8 @@
 """Tests for scripts/evaluate.py helper functions."""
 
+# pyright: reportPrivateUsage=false
+# pyright: reportUnknownMemberType=false
+
 from __future__ import annotations
 
 import csv
@@ -59,7 +62,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         assert len(split.gallery_labels) == 3
@@ -77,7 +80,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids, widths, heights)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         # 3 albums → 3 gallery items
@@ -97,7 +100,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids, widths, heights)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         # Gallery should contain the embedding for "large.jpg" (index 1)
@@ -113,7 +116,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         assert split.label_to_album_id == {0: "a", 1: "b", 2: "c"}
@@ -128,7 +131,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         # label 0 = "a" (3 images), label 1 = "b" (2 images)
@@ -147,7 +150,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids, widths, heights)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         # img1 (800x600) is canonical → queries are img0 (200) and img2 (400)
@@ -162,7 +165,7 @@ class TestBuildGalleryQuerySplit:
         manifest = _make_manifest(image_paths, album_ids)
 
         split = _build_gallery_query_split(
-            embeddings, album_ids, manifest, image_paths, Path("/gallery")
+            embeddings, album_ids, manifest, image_paths
         )
 
         assert split.gallery_embeddings.dtype == np.float32

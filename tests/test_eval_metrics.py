@@ -1,5 +1,7 @@
 """Tests for vinylid_ml.eval_metrics."""
 
+# pyright: reportUnknownMemberType=false
+
 from __future__ import annotations
 
 import numpy as np
@@ -302,6 +304,14 @@ class TestComputeNNAmbiguity:
         labels = np.array([0, 1])  # 2 labels but 3 embeddings
 
         with pytest.raises(ValueError, match="gallery_labels length"):
+            compute_nn_ambiguity(embeddings, labels)
+
+    def test_single_album_raises(self) -> None:
+        """Single unique album raises ValueError (no cross-album NN possible)."""
+        embeddings = self._l2_normalize(np.eye(3, dtype=np.float32))
+        labels = np.array([0, 0, 0])
+
+        with pytest.raises(ValueError, match="at least 2 distinct album labels"):
             compute_nn_ambiguity(embeddings, labels)
 
     def test_to_dict_serializable(self) -> None:
