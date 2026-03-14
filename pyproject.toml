@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vinylid-ml"
+version = "0.1.0"
+description = "On-device album cover recognition via embedding-based retrieval"
+readme = "README.md"
+license = {text = "TBD"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Sertan Yamaner", email = "syamaner@users.noreply.github.com"},
+]
+
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "open-clip-torch>=2.24",
+    "Pillow>=10.0",
+    "coremltools>=7.0",
+    "scikit-learn>=1.3",
+    "structlog>=23.1",
+    "huggingface-hub>=0.20",
+    "kornia>=0.7",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+    "pyyaml>=6.0",
+    "thefuzz[speedup]>=0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pyright>=1.1",
+    "ruff>=0.4",
+    "ipykernel>=6.0",
+    "matplotlib>=3.7",
+    "pandas-stubs",
+    "types-PyYAML",
+    "types-Pillow",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "TC002",  # runtime imports used as type hints with from __future__ annotations
+    "TC003",  # same for stdlib imports like Path
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vinylid_ml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+# torch, torchvision, kornia, coremltools, structlog, thefuzz don't ship stubs
+reportMissingTypeStubs = false

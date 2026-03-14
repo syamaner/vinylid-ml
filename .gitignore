@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Type checking / linting / testing caches
+.pyright/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# PyTorch
+*.pt
+*.pth
+*.onnx
+
+# --- Privacy & large files (never commit) ---
+
+# Real-world test photos (may contain faces, GPS)
+test_photos/
+
+# Experiment outputs (uploaded to HF Hub, not git)
+results/
+
+# CoreML models and indexes (uploaded to HF Hub, not git)
+coreml/
+
+# Embedding caches
+*.npy
+*.npz
+gallery.idx
+
+# Dataset artifacts (generated locally by prepare_dataset.py)
+data/manifest.parquet
+data/manifest_errors.csv
+data/splits.json
+data/test_*_matched.csv
+data/augmented/
+
+# Progress tracking (local only)
+PROGRESS.md
+
+# HF Hub cache
+.cache/

@@ -1,0 +1,41 @@
+# Dataset configuration for VinylID ML
+# Update paths below to match your local setup.
+# Relative paths are resolved against this config file's directory.
+
+paths:
+  # Root directory containing album-export/{ArtistFolder}/{AlbumTitle}/{images}
+  gallery_root: /Volumes/nvme1/vinyl/album-export
+
+  # SQLite database from the original .NET EF Core app
+  sqlite_db: /Volumes/nvme1/vinyl/vinylid/data/db/vinylid.db
+
+  # Real-world test photos (offline — never committed to git)
+  test_complete: /Volumes/nvme1/vinyl/vinylid/test/complete
+  test_sample: /Volumes/nvme1/vinyl/vinylid/test/sample/input
+
+  # Output directory for generated artifacts (relative to this file → <project>/data)
+  output_dir: ../data
+
+splits:
+  # Split at album level, not image level
+  train_ratio: 0.80
+  val_ratio: 0.10
+  test_ratio: 0.10
+  # Random seed for reproducible splits
+  seed: 42
+  # Single-image albums (67%) go to train preferentially
+  prefer_single_image_to_train: true
+
+augmentation:
+  # Number of augmented variants per query image
+  variants_per_image: 5
+  # Augmentation parameters
+  perspective_max_angle: 30      # degrees
+  brightness_range: 0.30         # ±30%
+  contrast_range: 0.20           # ±20%
+  blur_sigma_range: [0.5, 2.0]
+  crop_scale_range: [0.70, 0.90]
+  noise_sigma_range: [5, 25]     # 8-bit scale
+  glare_enabled: true
+  downscale_range: [400, 600]    # px, then upscale back
+  seed: 42

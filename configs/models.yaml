@@ -1,0 +1,107 @@
+# Model configurations for VinylID ML evaluation matrix
+# Each model has a unique ID used in results/ directory naming.
+
+models:
+  # --- Category A: Zero-shot global embeddings ---
+  A1-dinov2-cls:
+    name: "DINOv2 ViT-S/14 [CLS]"
+    category: zero-shot
+    source: torch.hub
+    hub_repo: facebookresearch/dinov2
+    hub_model: dinov2_vits14
+    embedding_dim: 384
+    pooling: cls
+    input_sizes: [224, 518]  # benchmark both
+    normalization: imagenet
+
+  A1-dinov2-gem:
+    name: "DINOv2 ViT-S/14 GeM"
+    category: zero-shot
+    source: torch.hub
+    hub_repo: facebookresearch/dinov2
+    hub_model: dinov2_vits14
+    embedding_dim: 384
+    pooling: gem
+    gem_p: 3.0
+    input_sizes: [224, 518]
+    normalization: imagenet
+
+  A2-openclip:
+    name: "OpenCLIP ViT-B/32"
+    category: zero-shot
+    source: open_clip
+    model_name: ViT-B-32
+    pretrained: laion2b_s34b_b79k
+    embedding_dim: 512
+    input_sizes: [224]
+    normalization: openclip
+
+  A3-apple-featureprint:
+    name: "Apple VNFeaturePrint"
+    category: zero-shot
+    source: vision_framework
+    # Black-box — evaluated via pairwise distance matrix
+    input_sizes: [224]
+
+  A4-sscd:
+    name: "SSCD ResNet50"
+    category: zero-shot
+    source: torch.hub
+    hub_repo: facebookresearch/sscd-copy-detection
+    hub_model: sscd_disc_mixup
+    embedding_dim: 512
+    input_sizes: [224]
+    normalization: imagenet
+
+  # --- Category B: Fine-tuned global embeddings ---
+  B1-mobilenet-arcface:
+    name: "MobileNetV3-Small + ArcFace"
+    category: fine-tuned
+    backbone: mobilenet_v3_small
+    embedding_dim: 256
+    arcface_margin: 0.5
+    arcface_scale: 64
+    input_sizes: [224]
+    normalization: imagenet
+
+  B2-dinov2-arcface:
+    name: "DINOv2 ViT-S/14 + ArcFace"
+    category: fine-tuned
+    backbone: dinov2_vits14
+    embedding_dim: 384
+    arcface_margin: 0.5
+    arcface_scale: 64
+    freeze_epochs: 5
+    input_sizes: [224]
+    normalization: imagenet
+
+  B3-sscd-arcface:
+    name: "SSCD ResNet50 + ArcFace"
+    category: fine-tuned
+    backbone: sscd_disc_mixup
+    embedding_dim: 512
+    arcface_margin: 0.5
+    arcface_scale: 64
+    freeze_epochs: 5
+    conditional: true  # only if A4 shows promise
+    input_sizes: [224]
+    normalization: imagenet
+
+  # --- Category C: Local feature matching ---
+  C1-dinov2-patches:
+    name: "DINOv2 Patch-Level"
+    category: local
+    source: torch.hub
+    hub_repo: facebookresearch/dinov2
+    hub_model: dinov2_vits14
+    patch_dim: 384
+    patches_per_image: 256  # 16x16 grid at 224px
+    input_sizes: [224, 518]
+    normalization: imagenet
+
+  C2-superpoint-lightglue:
+    name: "SuperPoint + LightGlue"
+    category: local
+    source: kornia
+    descriptor_dim: 256
+    input_sizes: [512]  # higher res for keypoint detection
