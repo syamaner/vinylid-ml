@@ -74,10 +74,12 @@ def build_manifest(
                 try:
                     meta = extract_metadata(image_file)
                 except (ExifExtractionError, FileNotFoundError, OSError, ValueError) as e:
-                    errors.append({
-                        "image_path": str(image_file),
-                        "error": str(e),
-                    })
+                    errors.append(
+                        {
+                            "image_path": str(image_file),
+                            "error": str(e),
+                        }
+                    )
                     continue
 
                 # Deterministic album_id from directory structure
@@ -85,23 +87,23 @@ def build_manifest(
 
                 # Look up CoverType from DB using filename pattern
                 # Filename: {release_uuid}-{caa_image_id}.{ext}
-                cover_type = _match_cover_type(
-                    meta.release_id, image_file.name, cover_types
-                )
+                cover_type = _match_cover_type(meta.release_id, image_file.name, cover_types)
 
-                records.append({
-                    "image_path": str(image_file),
-                    "release_id": meta.release_id,
-                    "artist": meta.artist,
-                    "album": meta.album,
-                    "artist_dir": artist_dir.name,
-                    "album_dir": album_dir.name,
-                    "album_id": album_id,
-                    "width": meta.width,
-                    "height": meta.height,
-                    "format": meta.image_format,
-                    "cover_type": cover_type,
-                })
+                records.append(
+                    {
+                        "image_path": str(image_file),
+                        "release_id": meta.release_id,
+                        "artist": meta.artist,
+                        "album": meta.album,
+                        "artist_dir": artist_dir.name,
+                        "album_dir": album_dir.name,
+                        "album_id": album_id,
+                        "width": meta.width,
+                        "height": meta.height,
+                        "format": meta.image_format,
+                        "cover_type": cover_type,
+                    }
+                )
 
                 if total_files % 5000 == 0:
                     logger.info("progress", processed=total_files, records=len(records))
@@ -249,9 +251,7 @@ def integrate_test_set(
     df = pd.read_csv(csv_path)
 
     # Extract just the filename from Windows paths
-    df["filename"] = df["FilePath"].apply(
-        lambda p: PureWindowsPath(p).name
-    )
+    df["filename"] = df["FilePath"].apply(lambda p: PureWindowsPath(p).name)
 
     # Check which files actually exist in the test directory
     existing_files = {f.name for f in test_dir.iterdir() if f.is_file()}
@@ -277,9 +277,7 @@ def integrate_test_set(
             match_scores.append(0)
             continue
 
-        best_id, best_score = _fuzzy_match_album(
-            artist, album, gallery_lookup
-        )
+        best_id, best_score = _fuzzy_match_album(artist, album, gallery_lookup)
         matched_ids.append(best_id)
         match_scores.append(best_score)
 
@@ -391,9 +389,7 @@ def _load_cover_types(db_path: Path) -> dict[str, str]:
     return result
 
 
-def _match_cover_type(
-    release_id: str, filename: str, cover_types: dict[str, str]
-) -> str:
+def _match_cover_type(release_id: str, filename: str, cover_types: dict[str, str]) -> str:
     """Try to match an image to a CoverType from the DB.
 
     Args:
@@ -521,9 +517,7 @@ def main() -> None:
     test_sample_dir = _resolve(paths["test_sample"])
     test_sample_csv = test_sample_dir / "test_data.csv"
     if test_sample_csv.exists():
-        test_sample = integrate_test_set(
-            test_sample_csv, test_sample_dir, manifest, name="sample"
-        )
+        test_sample = integrate_test_set(test_sample_csv, test_sample_dir, manifest, name="sample")
         test_sample.to_csv(output_dir / "test_sample_matched.csv", index=False)
 
     # Print EDA

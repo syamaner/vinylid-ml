@@ -154,10 +154,12 @@ class DINOv2Embedder(EmbeddingModel):
             model_id=self.model_id,
             device=str(self._device),
         )
-        model = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14", verbose=False)
-        if not isinstance(model, torch.nn.Module):
-            raise TypeError(f"Expected nn.Module from torch.hub, got {type(model)}")
-        self._model = model
+        hub_result = torch.hub.load(  # type: ignore[reportUnknownMemberType]
+            "facebookresearch/dinov2", "dinov2_vits14", verbose=False
+        )
+        if not isinstance(hub_result, torch.nn.Module):
+            raise TypeError(f"Expected nn.Module from torch.hub, got {type(hub_result)}")
+        self._model: torch.nn.Module = hub_result
         self._model.to(self._device)
         self._model.eval()
         logger.info("model_loaded", model_id=self.model_id)
@@ -209,8 +211,8 @@ class DINOv2Embedder(EmbeddingModel):
                 embeddings = torch.as_tensor(self._model(images))
             else:
                 # forward_features() returns dict with patch tokens
-                features: dict[str, torch.Tensor] = self._model.forward_features(images)  # type: ignore[operator]
-                patch_tokens = features["x_norm_patchtokens"]
+                features = self._model.forward_features(images)  # type: ignore[operator]
+                patch_tokens = torch.as_tensor(features["x_norm_patchtokens"])
                 embeddings = gem_pool(patch_tokens, p=self._gem_p)
 
         embeddings = F.normalize(embeddings, p=2, dim=-1)
@@ -246,7 +248,7 @@ class OpenCLIPEmbedder(EmbeddingModel):
         )
         import open_clip
 
-        model, _, preprocess = open_clip.create_model_and_transforms(
+        model, _, preprocess = open_clip.create_model_and_transforms(  # type: ignore[reportUnknownMemberType]
             model_name, pretrained=pretrained, device=self._device
         )
         self._model: torch.nn.Module = model
@@ -356,7 +358,12 @@ class SSCDEmbedder(EmbeddingModel):
             logger.info("downloading_sscd", url=_SSCD_URLS[variant])
             torch.hub.download_url_to_file(_SSCD_URLS[variant], str(cached_path))
 
-        self._model: torch.nn.Module = torch.jit.load(str(cached_path), map_location=self._device)
+        jit_model = torch.jit.load(  # type: ignore[reportUnknownMemberType]
+            str(cached_path), map_location=self._device
+        )
+        if not isinstance(jit_model, torch.nn.Module):
+            raise TypeError("Expected nn.Module from torch.jit.load")
+        self._model: torch.nn.Module = jit_model
         self._model.eval()
         logger.info("model_loaded", model_id=self.model_id)
 

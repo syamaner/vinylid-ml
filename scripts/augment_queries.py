@@ -49,7 +49,8 @@ def augment_perspective(img: Image.Image, max_angle: float = 30.0) -> Image.Imag
     max_offset = int(min(w, h) * 0.15 * strength)
 
     coeffs = _find_perspective_coeffs(
-        w, h,
+        w,
+        h,
         [random.randint(-max_offset, max_offset) for _ in range(8)],
     )
     return img.transform((w, h), Image.Transform.PERSPECTIVE, coeffs, Image.Resampling.BICUBIC)
@@ -80,9 +81,7 @@ def augment_brightness_contrast(
     return img
 
 
-def augment_blur(
-    img: Image.Image, sigma_range: tuple[float, float] = (0.5, 2.0)
-) -> Image.Image:
+def augment_blur(img: Image.Image, sigma_range: tuple[float, float] = (0.5, 2.0)) -> Image.Image:
     """Apply Gaussian blur simulating camera defocus.
 
     Args:
@@ -96,9 +95,7 @@ def augment_blur(
     return img.filter(ImageFilter.GaussianBlur(radius=sigma))
 
 
-def augment_crop(
-    img: Image.Image, scale_range: tuple[float, float] = (0.70, 0.90)
-) -> Image.Image:
+def augment_crop(img: Image.Image, scale_range: tuple[float, float] = (0.70, 0.90)) -> Image.Image:
     """Apply random crop simulating partial cover visibility.
 
     Args:
@@ -119,9 +116,7 @@ def augment_crop(
     return cropped.resize((w, h), Image.Resampling.BICUBIC)
 
 
-def augment_noise(
-    img: Image.Image, sigma_range: tuple[int, int] = (5, 25)
-) -> Image.Image:
+def augment_noise(img: Image.Image, sigma_range: tuple[int, int] = (5, 25)) -> Image.Image:
     """Add Gaussian noise simulating phone camera sensor noise.
 
     Args:
@@ -175,9 +170,7 @@ def augment_glare(img: Image.Image) -> Image.Image:
     return result.convert("RGB")
 
 
-def augment_downscale(
-    img: Image.Image, target_range: tuple[int, int] = (400, 600)
-) -> Image.Image:
+def augment_downscale(img: Image.Image, target_range: tuple[int, int] = (400, 600)) -> Image.Image:
     """Downscale then upscale simulating lower-quality captures.
 
     Args:
@@ -226,21 +219,13 @@ def generate_augmented_queries(
     records = []
 
     augmenters = {
-        "perspective": lambda im: augment_perspective(
-            im, config.get("perspective_max_angle", 30)
-        ),
+        "perspective": lambda im: augment_perspective(im, config.get("perspective_max_angle", 30)),
         "brightness_contrast": lambda im: augment_brightness_contrast(
             im, config.get("brightness_range", 0.30), config.get("contrast_range", 0.20)
         ),
-        "blur": lambda im: augment_blur(
-            im, tuple(config.get("blur_sigma_range", [0.5, 2.0]))
-        ),
-        "crop": lambda im: augment_crop(
-            im, tuple(config.get("crop_scale_range", [0.70, 0.90]))
-        ),
-        "noise": lambda im: augment_noise(
-            im, tuple(config.get("noise_sigma_range", [5, 25]))
-        ),
+        "blur": lambda im: augment_blur(im, tuple(config.get("blur_sigma_range", [0.5, 2.0]))),
+        "crop": lambda im: augment_crop(im, tuple(config.get("crop_scale_range", [0.70, 0.90]))),
+        "noise": lambda im: augment_noise(im, tuple(config.get("noise_sigma_range", [5, 25]))),
         "downscale": lambda im: augment_downscale(
             im, tuple(config.get("downscale_range", [400, 600]))
         ),
@@ -262,13 +247,15 @@ def generate_augmented_queries(
         out_path = output_dir / out_name
         augmented.save(out_path, quality=90)
 
-        records.append({
-            "image_path": str(out_path),
-            "source_image": str(image_path),
-            "album_id": album_id,
-            "augmentation_type": aug_name,
-            "variant_index": i,
-        })
+        records.append(
+            {
+                "image_path": str(out_path),
+                "source_image": str(image_path),
+                "album_id": album_id,
+                "augmentation_type": aug_name,
+                "variant_index": i,
+            }
+        )
 
     img.close()
     return records
@@ -277,22 +264,21 @@ def generate_augmented_queries(
 # --- Private helpers ---
 
 
-def _find_perspective_coeffs(
-    w: int, h: int, offsets: list[int]
-) -> tuple[float, ...]:
+def _find_perspective_coeffs(w: int, h: int, offsets: list[int]) -> tuple[float, ...]:
     """Compute perspective transform coefficients from corner offsets."""
     # Source corners
-    src = np.array([
-        [0, 0], [w, 0], [w, h], [0, h]
-    ], dtype=np.float64)
+    src = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float64)
 
     # Destination corners with random offsets
-    dst = np.array([
-        [offsets[0], offsets[1]],
-        [w + offsets[2], offsets[3]],
-        [w + offsets[4], h + offsets[5]],
-        [offsets[6], h + offsets[7]],
-    ], dtype=np.float64)
+    dst = np.array(
+        [
+            [offsets[0], offsets[1]],
+            [w + offsets[2], offsets[3]],
+            [w + offsets[4], h + offsets[5]],
+            [offsets[6], h + offsets[7]],
+        ],
+        dtype=np.float64,
+    )
 
     # Solve for perspective coefficients
     matrix = []

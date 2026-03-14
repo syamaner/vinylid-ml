@@ -28,6 +28,8 @@ dependencies = [
     "pyarrow>=14.0",
     "pyyaml>=6.0",
     "thefuzz[speedup]>=0.20",
+    "plotly>=5.18",
+    "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]

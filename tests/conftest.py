@@ -17,11 +17,13 @@ def tmp_image(tmp_path: Path) -> Path:
 
     # Build EXIF data matching our gallery format
     exif = img.getexif()
-    copyright_json = json.dumps({
-        "ReleaseId": "abc12345-def6-7890-abcd-ef1234567890",
-        "Artist": "Test Artist",
-        "Album": "Test Album",
-    })
+    copyright_json = json.dumps(
+        {
+            "ReleaseId": "abc12345-def6-7890-abcd-ef1234567890",
+            "Artist": "Test Artist",
+            "Album": "Test Album",
+        }
+    )
     exif[33432] = copyright_json  # Copyright tag
     exif[315] = "Test Artist - Test Album"  # Artist tag
     exif[42112] = "http://musicbrainz.org/ws/2/release/abc12345"  # XPComment
@@ -64,18 +66,30 @@ def tmp_gallery(tmp_path: Path) -> Path:
     gallery_root = tmp_path / "album-export"
 
     albums = [
-        ("ArtistA", "Album1", [
-            ("release1-img1.jpg", "release-uuid-1", "ArtistA", "Album1"),
-            ("release1-img2.jpg", "release-uuid-1", "ArtistA", "Album1"),
-        ]),
-        ("ArtistA", "Album2", [
-            ("release2-img1.jpg", "release-uuid-2", "ArtistA", "Album2"),
-        ]),
-        ("ArtistB", "Album3", [
-            ("release3-img1.jpg", "release-uuid-3", "ArtistB", "Album3"),
-            ("release3-img2.jpg", "release-uuid-3", "ArtistB", "Album3"),
-            ("release3-img3.jpg", "release-uuid-3", "ArtistB", "Album3"),
-        ]),
+        (
+            "ArtistA",
+            "Album1",
+            [
+                ("release1-img1.jpg", "release-uuid-1", "ArtistA", "Album1"),
+                ("release1-img2.jpg", "release-uuid-1", "ArtistA", "Album1"),
+            ],
+        ),
+        (
+            "ArtistA",
+            "Album2",
+            [
+                ("release2-img1.jpg", "release-uuid-2", "ArtistA", "Album2"),
+            ],
+        ),
+        (
+            "ArtistB",
+            "Album3",
+            [
+                ("release3-img1.jpg", "release-uuid-3", "ArtistB", "Album3"),
+                ("release3-img2.jpg", "release-uuid-3", "ArtistB", "Album3"),
+                ("release3-img3.jpg", "release-uuid-3", "ArtistB", "Album3"),
+            ],
+        ),
     ]
 
     for artist, album, images in albums:
@@ -85,11 +99,13 @@ def tmp_gallery(tmp_path: Path) -> Path:
         for filename, release_id, artist_name, album_name in images:
             img = Image.new("RGB", (200, 200), color=(128, 128, 128))
             exif = img.getexif()
-            exif[33432] = json.dumps({
-                "ReleaseId": release_id,
-                "Artist": artist_name,
-                "Album": album_name,
-            })
+            exif[33432] = json.dumps(
+                {
+                    "ReleaseId": release_id,
+                    "Artist": artist_name,
+                    "Album": album_name,
+                }
+            )
             exif[315] = f"{artist_name} - {album_name}"
 
             img.save(album_dir / filename, exif=exif.tobytes())

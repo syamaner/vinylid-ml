@@ -270,13 +270,17 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
 
     embeddings: NDArray[np.floating] = np.load(npy_path)
     with meta_path.open() as f:
-        metadata: dict[str, object] = json.load(f)
+        metadata = json.load(f)  # Returns Any — validated below
 
-    image_paths = metadata["image_paths"]
-    album_ids = metadata["album_ids"]
-    if not isinstance(image_paths, list) or not isinstance(album_ids, list):
-        msg = f"Expected lists for image_paths and album_ids in {meta_path}"
-        raise TypeError(msg)
+    # metadata is Any from json.load — iterate directly to produce list[str]
+    # (isinstance narrows to list[Unknown] which causes strict-mode issues)
+    try:
+        image_paths: list[str] = [str(p) for p in metadata["image_paths"]]
+        album_ids: list[str] = [str(a) for a in metadata["album_ids"]]
+    except (TypeError, KeyError) as e:
+        msg = f"Invalid image_paths or album_ids in {meta_path}: {e}"
+        raise TypeError(msg) from e
+
     if len(image_paths) != embeddings.shape[0]:
         msg = (
             f"Metadata/embedding mismatch: {len(image_paths)} paths "
@@ -289,7 +293,7 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
         image_paths=image_paths,
         album_ids=album_ids,
         model_id=str(metadata["model_id"]),
-        embedding_dim=int(metadata["embedding_dim"]),  # type: ignore[arg-type]
+        embedding_dim=int(metadata["embedding_dim"]),
     )
 
     logger.info(

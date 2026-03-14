@@ -6,6 +6,18 @@ import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from vinylid_ml.eval_metrics import (
+        CalibrationResult as CalibrationResult,
+    )
+    from vinylid_ml.eval_metrics import (
+        NNAmbiguityResult as NNAmbiguityResult,
+    )
+    from vinylid_ml.eval_metrics import (
+        compute_confidence_calibration as compute_confidence_calibration,
+    )
+    from vinylid_ml.eval_metrics import (
+        compute_nn_ambiguity as compute_nn_ambiguity,
+    )
     from vinylid_ml.gallery import (
         EmbeddingResult as EmbeddingResult,
     )
@@ -39,23 +51,35 @@ if TYPE_CHECKING:
     from vinylid_ml.models import (
         get_device as get_device,
     )
+    from vinylid_ml.report import (
+        generate_report as generate_report,
+    )
 
 __all__ = [
+    "CalibrationResult",
     "DINOv2Embedder",
     "EmbeddingModel",
     "EmbeddingResult",
     "GalleryImageDataset",
+    "NNAmbiguityResult",
     "OpenCLIPEmbedder",
     "SSCDEmbedder",
     "VinylIDError",
+    "compute_confidence_calibration",
+    "compute_nn_ambiguity",
     "embed_dataset",
     "gem_pool",
+    "generate_report",
     "get_device",
     "load_embeddings",
     "save_embeddings",
 ]
 
 _LAZY_MODULES: dict[str, str] = {
+    "CalibrationResult": "vinylid_ml.eval_metrics",
+    "NNAmbiguityResult": "vinylid_ml.eval_metrics",
+    "compute_confidence_calibration": "vinylid_ml.eval_metrics",
+    "compute_nn_ambiguity": "vinylid_ml.eval_metrics",
     "DINOv2Embedder": "vinylid_ml.models",
     "EmbeddingModel": "vinylid_ml.models",
     "OpenCLIPEmbedder": "vinylid_ml.models",
@@ -67,6 +91,7 @@ _LAZY_MODULES: dict[str, str] = {
     "embed_dataset": "vinylid_ml.gallery",
     "load_embeddings": "vinylid_ml.gallery",
     "save_embeddings": "vinylid_ml.gallery",
+    "generate_report": "vinylid_ml.report",
 }
 
 
