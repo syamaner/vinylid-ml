@@ -34,6 +34,9 @@ if TYPE_CHECKING:
         save_embeddings as save_embeddings,
     )
     from vinylid_ml.models import (
+        ALL_MODEL_IDS as ALL_MODEL_IDS,
+    )
+    from vinylid_ml.models import (
         DINOv2Embedder as DINOv2Embedder,
     )
     from vinylid_ml.models import (
@@ -46,6 +49,9 @@ if TYPE_CHECKING:
         SSCDEmbedder as SSCDEmbedder,
     )
     from vinylid_ml.models import (
+        create_model as create_model,
+    )
+    from vinylid_ml.models import (
         gem_pool as gem_pool,
     )
     from vinylid_ml.models import (
@@ -56,6 +62,7 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
+    "ALL_MODEL_IDS",
     "CalibrationResult",
     "DINOv2Embedder",
     "EmbeddingModel",
@@ -67,6 +74,7 @@ __all__ = [
     "VinylIDError",
     "compute_confidence_calibration",
     "compute_nn_ambiguity",
+    "create_model",
     "embed_dataset",
     "gem_pool",
     "generate_report",
@@ -80,6 +88,8 @@ _LAZY_MODULES: dict[str, str] = {
     "NNAmbiguityResult": "vinylid_ml.eval_metrics",
     "compute_confidence_calibration": "vinylid_ml.eval_metrics",
     "compute_nn_ambiguity": "vinylid_ml.eval_metrics",
+    "ALL_MODEL_IDS": "vinylid_ml.models",
+    "create_model": "vinylid_ml.models",
     "DINOv2Embedder": "vinylid_ml.models",
     "EmbeddingModel": "vinylid_ml.models",
     "OpenCLIPEmbedder": "vinylid_ml.models",

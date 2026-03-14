@@ -19,13 +19,25 @@ import torch.nn.functional as F  # noqa: N812
 from torchvision import transforms
 
 __all__ = [
+    "ALL_MODEL_IDS",
     "DINOv2Embedder",
     "EmbeddingModel",
     "OpenCLIPEmbedder",
     "SSCDEmbedder",
+    "create_model",
     "gem_pool",
     "get_device",
 ]
+
+#: Ordered tuple of all supported zero-shot model IDs.
+ALL_MODEL_IDS: tuple[str, ...] = (
+    "A1-dinov2-cls",
+    "A1-dinov2-gem",
+    "A1-dinov2-cls-518",
+    "A1-dinov2-gem-518",
+    "A2-openclip",
+    "A4-sscd",
+)
 
 logger = structlog.get_logger()
 
@@ -406,3 +418,37 @@ class SSCDEmbedder(EmbeddingModel):
 
         embeddings = F.normalize(embeddings, p=2, dim=-1)
         return embeddings.cpu()
+
+
+def create_model(model_id: str) -> EmbeddingModel:
+    """Instantiate an EmbeddingModel from a model ID string.
+
+    Factory function shared by all scripts that need to load a model.
+    Supports all IDs in ALL_MODEL_IDS.
+
+    Args:
+        model_id: Model identifier string (e.g., ``"A1-dinov2-cls"``).
+
+    Returns:
+        A configured, ready-to-use EmbeddingModel instance.
+
+    Raises:
+        ValueError: If model_id is not recognised.
+    """
+    match model_id:
+        case "A1-dinov2-cls":
+            return DINOv2Embedder(pooling="cls")
+        case "A1-dinov2-gem":
+            return DINOv2Embedder(pooling="gem")
+        case "A1-dinov2-cls-518":
+            return DINOv2Embedder(pooling="cls", input_size=518)
+        case "A1-dinov2-gem-518":
+            return DINOv2Embedder(pooling="gem", input_size=518)
+        case "A2-openclip":
+            return OpenCLIPEmbedder()
+        case "A4-sscd":
+            return SSCDEmbedder()
+        case _:
+            raise ValueError(
+                f"Unknown model_id: '{model_id}'. Available: {', '.join(ALL_MODEL_IDS)}"
+            )
