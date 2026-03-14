@@ -72,6 +72,7 @@ def _make_vision_mocks(
 
 
 def test_featureprint_model_id_constant() -> None:
+    """FEATUREPRINT_MODEL_ID is the string 'A3-featureprint'."""
     assert FEATUREPRINT_MODEL_ID == "A3-featureprint"
 
 
@@ -79,6 +80,7 @@ def test_featureprint_model_id_constant() -> None:
 
 
 def test_import_vision_raises_import_error_when_missing() -> None:
+    """_import_vision raises ImportError with hint when Vision/Foundation are absent."""
     with patch.dict("sys.modules", {"Vision": None, "Foundation": None}), pytest.raises(
         ImportError, match="pyobjc-framework-Vision"
     ):
@@ -94,6 +96,7 @@ class TestExtractFeatureVector:
     def test_returns_float32_array_for_float_element_type(
         self, tmp_path: Path
     ) -> None:
+        """elementType=1 (float32 source) returns a float32 array with correct values."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
         values = [1.0, 2.0, 3.0, 4.0]
@@ -142,10 +145,12 @@ class TestExtractFeatureVector:
         )
 
     def test_raises_file_not_found_for_missing_path(self, tmp_path: Path) -> None:
+        """Passing a path that does not exist raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError, match="Image not found"):
             extract_feature_vector(tmp_path / "nonexistent.jpg")
 
     def test_raises_runtime_error_when_request_raises(self, tmp_path: Path) -> None:
+        """An exception inside performRequests_error_ is re-raised as RuntimeError."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
 
@@ -162,6 +167,7 @@ class TestExtractFeatureVector:
             extract_feature_vector(img)
 
     def test_raises_runtime_error_when_results_empty(self, tmp_path: Path) -> None:
+        """An empty Vision results list raises RuntimeError."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
 
@@ -182,6 +188,7 @@ class TestExtractFeatureVector:
     def test_raises_runtime_error_on_element_count_mismatch(
         self, tmp_path: Path
     ) -> None:
+        """Mismatch between elementCount and actual data bytes raises RuntimeError."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
         # 4 actual floats but claim elementCount=99
@@ -203,6 +210,32 @@ class TestExtractFeatureVector:
             "vinylid_ml.apple_featureprint._import_vision",
             return_value=(mock_vision, mock_foundation),
         ), pytest.raises(RuntimeError, match="data size mismatch"):
+            extract_feature_vector(img)
+
+    def test_raises_runtime_error_for_unknown_element_type(
+        self, tmp_path: Path
+    ) -> None:
+        """An element_type not in {1, 2} raises RuntimeError with 'Unsupported'."""
+        img = tmp_path / "img.jpg"
+        img.write_bytes(b"fake")
+        raw = struct.pack("4f", 1.0, 2.0, 3.0, 4.0)
+        obs = MagicMock()
+        obs.elementCount.return_value = 4
+        obs.elementType.return_value = 99  # unknown type
+        obs.data.return_value = raw
+
+        mock_request = MagicMock()
+        mock_request.results.return_value = [obs]
+        mock_vision = MagicMock()
+        mock_vision.VNGenerateImageFeaturePrintRequest.alloc.return_value.init.return_value = (
+            mock_request
+        )
+        mock_foundation = MagicMock()
+
+        with patch(
+            "vinylid_ml.apple_featureprint._import_vision",
+            return_value=(mock_vision, mock_foundation),
+        ), pytest.raises(RuntimeError, match="Unsupported VNElementType"):
             extract_feature_vector(img)
 
     def test_result_is_a_copy(self, tmp_path: Path) -> None:
@@ -235,6 +268,7 @@ class TestEmbedImages:
         return rng.standard_normal(8).astype(np.float32)
 
     def test_output_shape(self, tmp_path: Path) -> None:
+        """Output matrix has shape (N, D) matching image count and feature dim."""
         imgs = [tmp_path / f"img{i}.jpg" for i in range(5)]
         for p in imgs:
             p.write_bytes(b"x")
@@ -248,6 +282,7 @@ class TestEmbedImages:
         assert result.shape == (5, 8)
 
     def test_rows_are_l2_normalised(self, tmp_path: Path) -> None:
+        """Each row in the output matrix has unit L2 norm."""
         imgs = [tmp_path / f"img{i}.jpg" for i in range(6)]
         for p in imgs:
             p.write_bytes(b"x")
@@ -262,6 +297,7 @@ class TestEmbedImages:
         np.testing.assert_allclose(norms, np.ones(6), atol=1e-5)
 
     def test_output_dtype_is_float32(self, tmp_path: Path) -> None:
+        """Output matrix dtype is always float32."""
         imgs = [tmp_path / "img0.jpg"]
         imgs[0].write_bytes(b"x")
 
@@ -274,6 +310,7 @@ class TestEmbedImages:
         assert result.dtype == np.float32
 
     def test_raises_value_error_for_empty_list(self) -> None:
+        """Passing an empty list raises ValueError."""
         with pytest.raises(ValueError, match="non-empty"):
             embed_images([])
 
@@ -291,6 +328,7 @@ class TestEmbedImages:
         assert not np.any(np.isnan(result))
 
     def test_single_image(self, tmp_path: Path) -> None:
+        """A single [3, 4] vector is normalised to [0.6, 0.8]."""
         img = tmp_path / "single.jpg"
         img.write_bytes(b"x")
         vec = np.array([3.0, 4.0], dtype=np.float32)  # norm=5 → normalised=[0.6, 0.8]
@@ -326,6 +364,7 @@ class TestMeasureFeatureprintLatency:
     """Tests for measure_featureprint_latency()."""
 
     def test_returns_dict_with_correct_keys(self, tmp_path: Path) -> None:
+        """Returns a dict with exactly the keys p50_ms, p95_ms, p99_ms."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"x")
 
@@ -338,6 +377,7 @@ class TestMeasureFeatureprintLatency:
         assert set(result.keys()) == {"p50_ms", "p95_ms", "p99_ms"}
 
     def test_all_latency_values_are_positive(self, tmp_path: Path) -> None:
+        """All returned latency values are strictly positive."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"x")
 
@@ -352,6 +392,7 @@ class TestMeasureFeatureprintLatency:
         assert result["p99_ms"] > 0.0
 
     def test_percentile_ordering(self, tmp_path: Path) -> None:
+        """p50 <= p95 <= p99 across a sample of 20 timed runs."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"x")
 
@@ -362,6 +403,27 @@ class TestMeasureFeatureprintLatency:
             result = measure_featureprint_latency(img, n_warmup=1, n_timed=20)
 
         assert result["p50_ms"] <= result["p95_ms"] <= result["p99_ms"]
+
+    def test_raises_value_error_for_n_timed_zero(self, tmp_path: Path) -> None:
+        """n_timed=0 raises ValueError before any extractions are attempted."""
+        img = tmp_path / "img.jpg"
+        img.write_bytes(b"x")
+        with pytest.raises(ValueError, match="n_timed must be >= 1"):
+            measure_featureprint_latency(img, n_timed=0)
+
+    def test_raises_value_error_for_negative_n_timed(self, tmp_path: Path) -> None:
+        """Negative n_timed raises ValueError."""
+        img = tmp_path / "img.jpg"
+        img.write_bytes(b"x")
+        with pytest.raises(ValueError, match="n_timed must be >= 1"):
+            measure_featureprint_latency(img, n_timed=-5)
+
+    def test_raises_value_error_for_negative_n_warmup(self, tmp_path: Path) -> None:
+        """Negative n_warmup raises ValueError."""
+        img = tmp_path / "img.jpg"
+        img.write_bytes(b"x")
+        with pytest.raises(ValueError, match="n_warmup must be >= 0"):
+            measure_featureprint_latency(img, n_warmup=-1)
 
 
 # ── _filter_manifest_by_split ─────────────────────────────────────────────────
@@ -382,24 +444,28 @@ class TestFilterManifestBySplit:
         return mapping
 
     def test_filters_to_test_split(self) -> None:
+        """Only rows whose album_id belongs to the given split are returned."""
         manifest = self._make_manifest(["a1", "a2", "a3"])
         splits = {"a1": "test", "a2": "train", "a3": "test"}
         result = _filter_manifest_by_split(manifest, splits, "test")
         assert set(result["album_id"].tolist()) == {"a1", "a3"}
 
     def test_returns_all_when_split_is_all(self) -> None:
+        """split='all' returns the entire manifest unchanged."""
         manifest = self._make_manifest(["a1", "a2"])
         splits: dict[str, str] = {}
         result = _filter_manifest_by_split(manifest, splits, "all")
         assert len(result) == 2
 
     def test_empty_split_returns_empty_df(self) -> None:
+        """A split with no matching album IDs returns an empty DataFrame."""
         manifest = self._make_manifest(["a1", "a2"])
         splits = {"a1": "train", "a2": "train"}
         result = _filter_manifest_by_split(manifest, splits, "test")
         assert len(result) == 0
 
     def test_result_resets_index(self) -> None:
+        """Returned DataFrame index is reset to 0-based integers."""
         manifest = self._make_manifest(["a1", "a2", "a3"])
         splits = {"a2": "val", "a3": "train"}
         result = _filter_manifest_by_split(manifest, splits, "val")
@@ -413,6 +479,7 @@ class TestAppendLatencyCsv:
     """Tests for _append_latency_csv() in embed_featureprint.py."""
 
     def test_creates_file_with_header_when_absent(self, tmp_path: Path) -> None:
+        """Creates latency_summary.csv with header and one row when file is absent."""
         latency = {"p50_ms": 12.3, "p95_ms": 15.0, "p99_ms": 18.0}
         out = _append_latency_csv(tmp_path, "A3-featureprint", latency)
 
@@ -426,6 +493,7 @@ class TestAppendLatencyCsv:
         assert float(rows[0]["p50_ms"]) == pytest.approx(12.3)
 
     def test_appends_row_when_file_exists(self, tmp_path: Path) -> None:
+        """Appends a new row to an existing latency_summary.csv without rewriting header."""
         latency: dict[str, float] = {"p50_ms": 5.0, "p95_ms": 6.0, "p99_ms": 7.0}
         # Write first row
         _append_latency_csv(tmp_path, "A1-dinov2-cls", latency)
@@ -442,12 +510,14 @@ class TestAppendLatencyCsv:
         assert "A3-featureprint" in model_ids
 
     def test_creates_parent_dir_if_missing(self, tmp_path: Path) -> None:
+        """Creates the parent directory if it does not already exist."""
         nested = tmp_path / "deep" / "results"
         latency: dict[str, float] = {"p50_ms": 1.0, "p95_ms": 2.0, "p99_ms": 3.0}
         _append_latency_csv(nested, "A3-featureprint", latency)
         assert (nested / "latency_summary.csv").exists()
 
     def test_no_duplicate_header_on_append(self, tmp_path: Path) -> None:
+        """Calling twice produces exactly one header line."""
         latency: dict[str, float] = {"p50_ms": 1.0, "p95_ms": 2.0, "p99_ms": 3.0}
         _append_latency_csv(tmp_path, "model_a", latency)
         _append_latency_csv(tmp_path, "model_b", latency)

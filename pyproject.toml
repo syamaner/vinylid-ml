@@ -30,7 +30,7 @@ dependencies = [
     "pyarrow>=14.0",
     "pyyaml>=6.0",
     "thefuzz[speedup]>=0.20",
-    "pyobjc-framework-Vision>=10.0",
+    "pyobjc-framework-Vision>=10.0; platform_system == 'Darwin'",
 ]
 
 [project.optional-dependencies]
@@ -84,7 +84,7 @@ known-first-party = ["vinylid_ml"]
 pythonpath = ["."]
 addopts = "-m 'not integration'"
 markers = [
-    "integration: tests that download models or require network access",
+    "integration: tests that require external resources such as network access, model downloads, or platform-specific frameworks",
 ]
 
 [tool.pyright]

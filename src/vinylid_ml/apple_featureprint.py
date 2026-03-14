@@ -107,7 +107,13 @@ def extract_feature_vector(image_path: Path) -> NDArray[np.float32]:
     element_count: int = int(observation.elementCount())
     element_type: int = int(observation.elementType())
 
-    # Determine numpy dtype from VNElementType enum
+    # Validate and map VNElementType to numpy dtype
+    if element_type not in (_VN_ELEMENT_TYPE_FLOAT, _VN_ELEMENT_TYPE_DOUBLE):
+        raise RuntimeError(
+            f"Unsupported VNElementType {element_type} for {image_path}. "
+            f"Expected {_VN_ELEMENT_TYPE_FLOAT} (float32) or "
+            f"{_VN_ELEMENT_TYPE_DOUBLE} (float64)."
+        )
     dtype: type[np.float32] | type[np.float64] = (
         np.float32 if element_type == _VN_ELEMENT_TYPE_FLOAT else np.float64
     )
@@ -207,7 +213,14 @@ def measure_featureprint_latency(
 
     Returns:
         Dict with keys ``"p50_ms"``, ``"p95_ms"``, ``"p99_ms"`` (float ms).
+
+    Raises:
+        ValueError: If ``n_timed`` < 1 or ``n_warmup`` < 0.
     """
+    if n_timed < 1:
+        raise ValueError(f"n_timed must be >= 1, got {n_timed}")
+    if n_warmup < 0:
+        raise ValueError(f"n_warmup must be >= 0, got {n_warmup}")
     for _ in range(n_warmup):
         extract_feature_vector(image_path)
 
