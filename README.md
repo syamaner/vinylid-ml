@@ -56,13 +56,26 @@ vinylid-ml/
 ## Quick Start
 
 ```bash
-# Clone and install
+# Clone
 git clone https://github.com/syamaner/vinylid-ml.git
 cd vinylid-ml
+
+# Create virtual environment (Python 3.11+)
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+# Install package + dev dependencies
 pip install -e ".[dev]"
 
+# Run tests
+pytest tests/ -v
+
+# Lint and type-check
+ruff check src/ scripts/ tests/
+pyright --project . src/
+
 # Configure dataset paths (edit with your local paths)
-# See configs/dataset.yaml — set gallery_root and test_photos_root
+# See configs/dataset.yaml — set gallery_root and sqlite_db
 
 # Build dataset manifest and splits
 python scripts/prepare_dataset.py
@@ -70,6 +83,10 @@ python scripts/prepare_dataset.py
 # Run evaluation (example: DINOv2 zero-shot)
 python scripts/evaluate.py --model A1-dinov2-cls
 ```
+
+> **Note**: All dependencies must be declared in `pyproject.toml` before installing.
+> Never use bare `pip install <package>` — add the dep to `pyproject.toml` first,
+> then `pip install -e ".[dev]"`. See `AGENTS.md` for the full dependency policy.
 
 ## Models & Results
 
