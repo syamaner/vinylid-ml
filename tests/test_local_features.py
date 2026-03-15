@@ -119,6 +119,30 @@ def patched_local_matcher(
         return LocalFeatureMatcher(device=torch.device("cpu"))
 
 
+@pytest.fixture(scope="session")
+def integration_extractor_512() -> SuperPointExtractor:
+    """Return a real CPU SuperPoint extractor reused across integration tests."""
+    return SuperPointExtractor(max_num_keypoints=512, device=torch.device("cpu"))
+
+
+@pytest.fixture(scope="session")
+def integration_extractor_256() -> SuperPointExtractor:
+    """Return a real CPU SuperPoint extractor reused across integration tests."""
+    return SuperPointExtractor(max_num_keypoints=256, device=torch.device("cpu"))
+
+
+@pytest.fixture(scope="session")
+def integration_lightglue_matcher_cpu() -> LightGlueMatcher:
+    """Return a real CPU LightGlue matcher reused across integration tests."""
+    return LightGlueMatcher(device=torch.device("cpu"))
+
+
+@pytest.fixture(scope="session")
+def integration_local_matcher_256() -> LocalFeatureMatcher:
+    """Return a real CPU LocalFeatureMatcher reused across integration tests."""
+    return LocalFeatureMatcher(max_keypoints=256, device=torch.device("cpu"))
+
+
 # ---------------------------------------------------------------------------
 # LOCAL_FEATURE_MODEL_ID
 # ---------------------------------------------------------------------------
@@ -167,24 +191,31 @@ class TestKeypointFeatures:
 class TestMatchResult:
     """Tests for the MatchResult dataclass."""
 
-    def test_zero_inliers(self) -> None:
-        """MatchResult with zero inliers has empty array and confidence 0."""
+    def test_zero_matches(self) -> None:
+        """MatchResult with zero matches has empty scores and confidence 0."""
         mr = MatchResult(
-            num_inliers=0,
-            inlier_scores=np.empty(0, dtype=np.float32),
+            num_matches=0,
+            match_scores=np.empty(0, dtype=np.float32),
             confidence=0.0,
         )
-        assert mr.num_inliers == 0
-        assert mr.inlier_scores.shape == (0,)
+        assert mr.num_matches == 0
+        assert mr.match_scores.shape == (0,)
         assert mr.confidence == pytest.approx(0.0)
 
-    def test_nonzero_inliers(self) -> None:
-        """MatchResult with inliers correctly stores count and scores."""
+    def test_nonzero_matches(self) -> None:
+        """MatchResult with matches correctly stores count and scores."""
         scores = np.array([0.9, 0.8, 0.7], dtype=np.float32)
-        mr = MatchResult(num_inliers=3, inlier_scores=scores, confidence=float(scores.mean()))
-        assert mr.num_inliers == 3
-        assert mr.inlier_scores.shape == (3,)
+        mr = MatchResult(num_matches=3, match_scores=scores, confidence=float(scores.mean()))
+        assert mr.num_matches == 3
+        assert mr.match_scores.shape == (3,)
         assert mr.confidence == pytest.approx(0.8, abs=1e-5)
+
+    def test_inlier_aliases_remain_available(self) -> None:
+        """Backward-compatible inlier aliases reflect the renamed match fields."""
+        scores = np.array([0.9, 0.8, 0.7], dtype=np.float32)
+        mr = MatchResult(num_matches=3, match_scores=scores, confidence=float(scores.mean()))
+        assert mr.num_inliers == 3
+        np.testing.assert_array_equal(mr.inlier_scores, scores)
 
 
 # ---------------------------------------------------------------------------
@@ -348,32 +379,32 @@ class TestSuperPointExtractor:
 class TestLightGlueMatcher:
     """Tests for LightGlueMatcher."""
 
-    def test_match_returns_zero_inliers_when_no_matches(
+    def test_match_returns_zero_matches_when_no_matches(
         self, patched_lg_matcher: LightGlueMatcher
     ) -> None:
         """When LightGlue finds 0 matches, MatchResult has confidence 0.0."""
         patched_lg_matcher._model.return_value = _make_lg_raw_output(0)
         result = patched_lg_matcher.match(_make_kp(50), _make_kp(50))
-        assert result.num_inliers == 0
+        assert result.num_matches == 0
         assert result.confidence == pytest.approx(0.0)
-        assert result.inlier_scores.shape == (0,)
+        assert result.match_scores.shape == (0,)
 
-    def test_match_returns_correct_inlier_count(
+    def test_match_returns_correct_match_count(
         self, patched_lg_matcher: LightGlueMatcher
     ) -> None:
-        """num_inliers and inlier_scores length match the mocked match count."""
+        """num_matches and match_scores length match the mocked match count."""
         patched_lg_matcher._model.return_value = _make_lg_raw_output(15)
         result = patched_lg_matcher.match(_make_kp(50), _make_kp(50))
-        assert result.num_inliers == 15
-        assert result.inlier_scores.shape == (15,)
+        assert result.num_matches == 15
+        assert result.match_scores.shape == (15,)
 
     def test_match_confidence_is_mean_of_scores(
         self, patched_lg_matcher: LightGlueMatcher
     ) -> None:
-        """confidence is the mean of inlier_scores."""
+        """confidence is the mean of match_scores."""
         patched_lg_matcher._model.return_value = _make_lg_raw_output(10)
         result = patched_lg_matcher.match(_make_kp(50), _make_kp(50))
-        assert result.confidence == pytest.approx(float(result.inlier_scores.mean()), abs=1e-5)
+        assert result.confidence == pytest.approx(float(result.match_scores.mean()), abs=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -384,31 +415,31 @@ class TestLightGlueMatcher:
 class TestLocalMatcherRankGallery:
     """Tests for LocalFeatureMatcher.rank_gallery."""
 
-    def test_rank_gallery_sorted_descending_by_inliers(
+    def test_rank_gallery_sorted_descending_by_match_count(
         self, patched_local_matcher: LocalFeatureMatcher
     ) -> None:
-        """rank_gallery returns indices sorted by descending inlier count."""
+        """rank_gallery returns indices sorted by descending match count."""
         gallery = [_make_kp(50, seed=i) for i in range(4)]
-        inlier_sequence = [5, 20, 1, 15]
+        match_count_sequence = [5, 20, 1, 15]
         with patch.object(
             patched_local_matcher._matcher,
-            "match_num_inliers_prepared",
-            side_effect=inlier_sequence,
+            "count_matches_prepared",
+            side_effect=match_count_sequence,
         ):
             ranked = patched_local_matcher.rank_gallery(_make_kp(50), gallery)
 
         # Expected order: index 1 (20), index 3 (15), index 0 (5), index 2 (1)
         assert list(ranked) == [1, 3, 0, 2]
 
-    def test_rank_gallery_all_zero_inliers_returns_all_indices(
+    def test_rank_gallery_all_zero_matches_returns_all_indices(
         self, patched_local_matcher: LocalFeatureMatcher
     ) -> None:
-        """When all inlier counts are 0, all gallery indices are still returned."""
+        """When all match counts are 0, all gallery indices are still returned."""
         gallery = [_make_kp(50, seed=i) for i in range(3)]
         zeros = [0, 0, 0]
         with patch.object(
             patched_local_matcher._matcher,
-            "match_num_inliers_prepared",
+            "count_matches_prepared",
             side_effect=zeros,
         ):
             ranked = patched_local_matcher.rank_gallery(_make_kp(50), gallery)
@@ -504,10 +535,11 @@ class TestLocalMatcherMeasureLatency:
 class TestIntegrationSuperPointExtractor:
     """Integration tests for SuperPointExtractor using real model weights."""
 
-    def test_extract_fixture_image_produces_correct_shapes(self) -> None:
+    def test_extract_fixture_image_produces_correct_shapes(
+        self, integration_extractor_512: SuperPointExtractor
+    ) -> None:
         """Extracted features have correct shapes and dtypes."""
-        extractor = SuperPointExtractor(max_num_keypoints=512, device=torch.device("cpu"))
-        kp = extractor.extract(_FIXTURE_PATHS[0])
+        kp = integration_extractor_512.extract(_FIXTURE_PATHS[0])
         n = kp.keypoints.shape[0]
         assert n <= 512
         assert kp.keypoints.shape == (n, 2)
@@ -515,11 +547,12 @@ class TestIntegrationSuperPointExtractor:
         assert kp.scores.shape == (n,)
         assert all(isinstance(d, int) for d in kp.image_size)
 
-    def test_extract_all_fixture_images(self) -> None:
+    def test_extract_all_fixture_images(
+        self, integration_extractor_256: SuperPointExtractor
+    ) -> None:
         """All 5 fixture images can be extracted without error."""
-        extractor = SuperPointExtractor(max_num_keypoints=256, device=torch.device("cpu"))
         for path in _FIXTURE_PATHS:
-            kp = extractor.extract(path)
+            kp = integration_extractor_256.extract(path)
             assert kp.keypoints.shape[0] > 0, f"No keypoints detected for {path.name}"
 
 
@@ -527,30 +560,33 @@ class TestIntegrationSuperPointExtractor:
 class TestIntegrationLightGlue:
     """Integration tests for full SuperPoint + LightGlue pipeline."""
 
-    def test_same_album_has_more_inliers_than_different_album(self) -> None:
-        """metallica_black_500 vs metallica_black_2000 has more inliers than vs 10cc."""
-        extractor = SuperPointExtractor(max_num_keypoints=512, device=torch.device("cpu"))
-        matcher = LightGlueMatcher(device=torch.device("cpu"))
+    def test_same_album_has_more_matches_than_different_album(
+        self,
+        integration_extractor_512: SuperPointExtractor,
+        integration_lightglue_matcher_cpu: LightGlueMatcher,
+    ) -> None:
+        """metallica_black_500 vs metallica_black_2000 has more matches than vs 10cc."""
+        kp_query = integration_extractor_512.extract(_FIXTURE_DIR / "metallica_black_500.png")
+        kp_same = integration_extractor_512.extract(_FIXTURE_DIR / "metallica_black_2000.png")
+        kp_diff = integration_extractor_512.extract(_FIXTURE_DIR / "10cc_donna_300.jpg")
 
-        kp_query = extractor.extract(_FIXTURE_DIR / "metallica_black_500.png")
-        kp_same = extractor.extract(_FIXTURE_DIR / "metallica_black_2000.png")
-        kp_diff = extractor.extract(_FIXTURE_DIR / "10cc_donna_300.jpg")
+        result_same = integration_lightglue_matcher_cpu.match(kp_query, kp_same)
+        result_diff = integration_lightglue_matcher_cpu.match(kp_query, kp_diff)
 
-        result_same = matcher.match(kp_query, kp_same)
-        result_diff = matcher.match(kp_query, kp_diff)
-
-        assert result_same.num_inliers > result_diff.num_inliers, (
-            f"Same-album inliers ({result_same.num_inliers}) should exceed "
-            f"different-album inliers ({result_diff.num_inliers})"
+        assert result_same.num_matches > result_diff.num_matches, (
+            f"Same-album matches ({result_same.num_matches}) should exceed "
+            f"different-album matches ({result_diff.num_matches})"
         )
 
-    def test_match_result_confidence_in_unit_interval(self) -> None:
+    def test_match_result_confidence_in_unit_interval(
+        self,
+        integration_extractor_256: SuperPointExtractor,
+        integration_lightglue_matcher_cpu: LightGlueMatcher,
+    ) -> None:
         """MatchResult confidence is always in [0, 1]."""
-        extractor = SuperPointExtractor(max_num_keypoints=256, device=torch.device("cpu"))
-        matcher = LightGlueMatcher(device=torch.device("cpu"))
-        kp0 = extractor.extract(_FIXTURE_PATHS[0])
-        kp1 = extractor.extract(_FIXTURE_PATHS[2])
-        result = matcher.match(kp0, kp1)
+        kp0 = integration_extractor_256.extract(_FIXTURE_PATHS[0])
+        kp1 = integration_extractor_256.extract(_FIXTURE_PATHS[2])
+        result = integration_lightglue_matcher_cpu.match(kp0, kp1)
         assert 0.0 <= result.confidence <= 1.0
 
 
@@ -558,16 +594,21 @@ class TestIntegrationLightGlue:
 class TestIntegrationLocalFeatureMatcher:
     """End-to-end integration test for LocalFeatureMatcher."""
 
-    def test_end_to_end_rank_gallery_puts_same_album_first(self, tmp_path: Path) -> None:
+    def test_end_to_end_rank_gallery_puts_same_album_first(
+        self,
+        integration_local_matcher_256: LocalFeatureMatcher,
+        tmp_path: Path,
+    ) -> None:
         """The same-album image (metallica_2000) is ranked #1 against metallica_500."""
-        matcher = LocalFeatureMatcher(max_keypoints=256, device=torch.device("cpu"))
 
         # Gallery: 5 images, only index 1 is the same album as the query
-        gallery_feats = matcher.extract_features(list(_FIXTURE_PATHS), cache_dir=tmp_path)
+        gallery_feats = integration_local_matcher_256.extract_features(
+            list(_FIXTURE_PATHS), cache_dir=tmp_path
+        )
         query_feats = gallery_feats[0]  # metallica_black_500 is the query
         # Build gallery without the query itself
         gallery_without_query = gallery_feats[1:]  # metallica_2000 is index 0 of this sub-list
 
-        ranked = matcher.rank_gallery(query_feats, gallery_without_query)
+        ranked = integration_local_matcher_256.rank_gallery(query_feats, gallery_without_query)
         # metallica_black_2000.png (index 0 in gallery_without_query) should be first
         assert ranked[0] == 0

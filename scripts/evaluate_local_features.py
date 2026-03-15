@@ -12,7 +12,7 @@ Two evaluation modes:
 
   ``--mode test``  (full test split via A4-sscd pre-filtering):
     4 564 query images x top-K A4-sscd candidates re-ranked by LightGlue
-    inlier count.  Runtime ~20 min on CPU.  Output in the same format as
+    match count.  Runtime ~20 min on CPU.  Output in the same format as
     ``evaluate.py``.
 
 Usage::
@@ -24,7 +24,6 @@ Usage::
         --config configs/dataset.yaml --mode test --top-k 50
 """
 
-# pyright: reportPrivateUsage=false
 # pyright: reportUnknownMemberType=false
 # pyright: reportUnknownArgumentType=false
 
@@ -113,22 +112,22 @@ def _select_gallery_images(
 # ---------------------------------------------------------------------------
 
 
-def _compute_metrics_from_inlier_matrix(
-    inlier_matrix: NDArray[np.float32],
+def _compute_metrics_from_score_matrix(
+    score_matrix: NDArray[np.float32],
     query_labels: NDArray[np.intp],
     gallery_labels: NDArray[np.intp],
 ) -> dict[str, float]:
-    """Compute R@1, R@5, mAP@5, MRR from an inlier-count matrix.
+    """Compute R@1, R@5, mAP@5, MRR from a retrieval score matrix.
 
     Args:
-        inlier_matrix: Shape ``(num_queries, num_gallery)``. Higher = better match.
+        score_matrix: Shape ``(num_queries, num_gallery)``. Higher = better match.
         query_labels: Shape ``(num_queries,)``. Integer album label per query.
         gallery_labels: Shape ``(num_gallery,)``. Integer album label per gallery.
 
     Returns:
         Dict with keys ``recall_at_1``, ``recall_at_5``, ``map_at_5``, ``mrr``.
     """
-    sorted_idx = np.argsort(-inlier_matrix, axis=1)
+    sorted_idx = np.argsort(-score_matrix, axis=1)
     sorted_labels = gallery_labels[sorted_idx]
     matches = sorted_labels == query_labels[:, np.newaxis]
 
@@ -372,6 +371,7 @@ def _mode_sample(
     sample_limit: int | None = None,
     sample_gallery_limit: int | None = None,
     top_k_sample: int = 50,
+    precompute_gallery_tensors: bool = False,
 ) -> None:
     """Run --mode sample evaluation.
 
@@ -403,6 +403,8 @@ def _mode_sample(
         top_k_sample: Gallery candidates selected by A4-sscd cosine similarity
             before LightGlue.  Falls back to SuperPoint mean descriptors if
             SSCD model unavailable.  0 = full pairwise (default: 50).
+        precompute_gallery_tensors: If true, prepare all gallery tensors once on
+            device before query matching. This is faster but uses more memory.
     """
     if not test_sample_matched_csv.exists():
         logger.error("sample_csv_not_found", path=str(test_sample_matched_csv))
@@ -487,22 +489,20 @@ def _mode_sample(
     gallery_labels = np.array([album_to_label[aid] for aid in gallery_album_ids], dtype=np.intp)
 
     # ── Run matching for each sample photo ────────────────────────────────
-    # Offset ensures any evaluated candidate (inliers ≥ 0) outscores
+    # Offset ensures any evaluated candidate (match count ≥ 0) outscores
     # non-evaluated items whose score is the pre-filter similarity (≤ 1).
     _offset: float = 10_000.0
     num_queries = len(matched)
-    inlier_matrix = np.zeros((num_queries, len(gallery_paths)), dtype=np.float32)
+    score_matrix = np.zeros((num_queries, len(gallery_paths)), dtype=np.float32)
     query_labels: list[int] = []
     per_query_rows: list[dict[str, object]] = []
-
-    # Precompute gallery tensors once — avoids re-preparing the same gallery features
-    # inside every query's inner candidate loop (mirrors _mode_test's optional precompute).
-    logger.info("preparing_gallery_tensors", n=len(gallery_feats))
-    t_prep = time.monotonic()
-    gallery_prepared_list: list[dict[str, torch.Tensor]] = [
-        matcher._matcher.prepare_features(gfeat) for gfeat in gallery_feats
-    ]
-    logger.info("gallery_tensor_prep_done", elapsed_s=round(time.monotonic() - t_prep, 1))
+    gallery_prepared_list: list[dict[str, torch.Tensor]] | None = None
+    should_precompute_gallery_tensors = precompute_gallery_tensors or top_k_sample == 0
+    if should_precompute_gallery_tensors:
+        logger.info("preparing_gallery_tensors", n=len(gallery_feats))
+        t_prep = time.monotonic()
+        gallery_prepared_list = [matcher.prepare_features(gfeat) for gfeat in gallery_feats]
+        logger.info("gallery_tensor_prep_done", elapsed_s=round(time.monotonic() - t_prep, 1))
 
     t0 = time.monotonic()
     for qi, (_, row) in enumerate(matched.iterrows()):
@@ -521,7 +521,7 @@ def _mode_sample(
         try:
             with PILImage.open(photo_path) as _img:
                 photo_img = _img.convert("RGB")
-            query_feat = matcher._extractor.extract(photo_img)
+            query_feat = matcher.extract_feature(photo_img)
         except (FileNotFoundError, RuntimeError, OSError) as exc:
             logger.warning("sample_photo_error", photo=filename, error=str(exc))
             query_labels[-1] = -1
@@ -529,7 +529,7 @@ def _mode_sample(
 
         # Pre-filter: select top-K gallery candidates via cosine similarity.
         # Set the row baseline to pre-filter sims so non-candidates always rank
-        # below any evaluated candidate, even one with 0 LightGlue inliers.
+        # below any evaluated candidate, even one with 0 LightGlue matches.
         if gallery_sscd is not None and sscd_model is not None and sscd_tfm is not None:
             # Primary: A4-sscd cross-domain invariant pre-filter
             qt = cast("torch.Tensor", sscd_tfm(photo_img)).unsqueeze(0)
@@ -537,25 +537,30 @@ def _mode_sample(
             sims = gallery_sscd @ query_sscd  # (N_gallery,)
             k = min(top_k_sample, len(gallery_feats))
             candidate_indices: list[int] = np.argsort(-sims)[:k].tolist()
-            inlier_matrix[qi] = sims  # non-candidates keep sim ∈ [-1, 1] as sentinel
+            score_matrix[qi] = sims  # non-candidates keep sim ∈ [-1, 1] as sentinel
         elif gallery_global is not None:
             # Fallback: SuperPoint mean descriptor (poor cross-domain recall)
             query_global = _compute_global_descriptor(query_feat)
             sims = gallery_global @ query_global  # (N_gallery,)
             k = min(top_k_sample, len(gallery_feats))
             candidate_indices = np.argsort(-sims)[:k].tolist()
-            inlier_matrix[qi] = sims  # non-candidates keep sim ∈ [-1, 1] as sentinel
+            score_matrix[qi] = sims  # non-candidates keep sim ∈ [-1, 1] as sentinel
         else:
             candidate_indices = list(range(len(gallery_feats)))
             # Full pairwise: all items evaluated, zeros are fine as baseline
 
         use_offset = len(candidate_indices) < len(gallery_feats)
-        query_prepared = matcher._matcher.prepare_features(query_feat)
+        query_prepared = matcher.prepare_features(query_feat)
         for gi in candidate_indices:
-            g_prepared = gallery_prepared_list[gi]
-            inliers = float(matcher._matcher.match_num_inliers_prepared(query_prepared, g_prepared))
-            # Candidates get offset+inliers so they always outscore non-candidates (sim ≤ 1)
-            inlier_matrix[qi, gi] = (_offset + inliers) if use_offset else inliers
+            gallery_idx = int(gi)
+            g_prepared = (
+                gallery_prepared_list[gallery_idx]
+                if gallery_prepared_list is not None
+                else matcher.prepare_features(gallery_feats[gallery_idx])
+            )
+            match_count = float(matcher.count_matches_prepared(query_prepared, g_prepared))
+            # Candidates get offset + match count so they always outscore non-candidates.
+            score_matrix[qi, gallery_idx] = (_offset + match_count) if use_offset else match_count
         del query_prepared
 
         # Per-query MPS memory cleanup (minimal cost for K=50 matches/query)
@@ -563,12 +568,13 @@ def _mode_sample(
         if torch.backends.mps.is_available():
             torch.mps.empty_cache()
 
-        top1_idx = int(np.argmax(inlier_matrix[qi]))
+        top1_idx = int(np.argmax(score_matrix[qi]))
         top1_album = gallery_album_ids[top1_idx]
         correct = top1_album == album_id
-        # Report true inlier count: undo offset if candidate, clamp to 0 for non-candidates
-        top1_raw = float(inlier_matrix[qi, top1_idx])
-        top1_inliers_count = (
+        # Report true LightGlue match count: undo offset if candidate, clamp to 0
+        # for non-candidates.
+        top1_raw = float(score_matrix[qi, top1_idx])
+        top1_match_count = (
             int(top1_raw - _offset)
             if use_offset and top1_raw >= _offset
             else int(max(0.0, top1_raw))
@@ -578,7 +584,7 @@ def _mode_sample(
                 "filename": filename,
                 "true_album_id": album_id,
                 "top1_album_id": top1_album,
-                "top1_inliers": top1_inliers_count,
+                "top1_matches": top1_match_count,
                 "correct": correct,
             }
         )
@@ -594,7 +600,7 @@ def _mode_sample(
 
     # Filter out queries with unknown labels
     valid_mask = np.array(query_labels) >= 0
-    inlier_matrix = inlier_matrix[valid_mask]
+    score_matrix = score_matrix[valid_mask]
     query_labels_arr = np.array(query_labels, dtype=np.intp)[valid_mask]
     num_valid = int(valid_mask.sum())
 
@@ -602,8 +608,8 @@ def _mode_sample(
         logger.error("no_valid_queries_in_sample")
         sys.exit(1)
 
-    metrics_dict = _compute_metrics_from_inlier_matrix(
-        inlier_matrix, query_labels_arr, gallery_labels
+    metrics_dict = _compute_metrics_from_score_matrix(
+        score_matrix, query_labels_arr, gallery_labels
     )
     metrics_dict["num_queries"] = num_valid
     metrics_dict["num_gallery"] = len(gallery_paths)
@@ -642,7 +648,7 @@ def _mode_sample(
     # Per-query CSV
     if per_query_rows:
         per_query_path = run_dir / "per_query.csv"
-        fieldnames = ["filename", "true_album_id", "top1_album_id", "top1_inliers", "correct"]
+        fieldnames = ["filename", "true_album_id", "top1_album_id", "top1_matches", "correct"]
         with per_query_path.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -740,15 +746,15 @@ def _mode_test(
     if precompute_gallery_tensors:
         logger.info("preparing_gallery_tensors", n=len(gallery_feats))
         t0 = time.monotonic()
-        gallery_prepared = [matcher._matcher.prepare_features(gfeat) for gfeat in gallery_feats]
+        gallery_prepared = [matcher.prepare_features(gfeat) for gfeat in gallery_feats]
         logger.info("gallery_tensor_prep_done", elapsed_s=round(time.monotonic() - t0, 1))
 
     # Re-rank queries
-    # inlier_matrix: (num_queries, num_gallery)
-    # For top-K candidates: inlier count + large offset so they're ranked above non-candidates
+    # score_matrix: (num_queries, num_gallery)
+    # For top-K candidates: match count + large offset so they're ranked above non-candidates
     # For non-top-K: raw A4-sscd score (in [-1,1]) — ensures top-K candidates rank higher
     _offset: float = 10_000.0
-    inlier_matrix = a4_sim.copy()  # Start with A4-sscd scores as baseline
+    score_matrix = a4_sim.copy()  # Start with A4-sscd scores as baseline
 
     t0 = time.monotonic()
     for qi in range(num_queries):
@@ -760,23 +766,21 @@ def _mode_test(
 
         # Extract query features
         try:
-            query_feat = matcher._extractor.extract(query_paths[qi])
+            query_feat = matcher.extract_feature(query_paths[qi])
         except (FileNotFoundError, RuntimeError) as exc:
             logger.warning("query_extraction_error", idx=qi, error=str(exc))
             continue
-        query_prepared = matcher._matcher.prepare_features(query_feat)
+        query_prepared = matcher.prepare_features(query_feat)
 
         # LightGlue match vs each candidate
         for gi in candidate_indices:
             g_prepared = (
                 gallery_prepared[int(gi)]
                 if gallery_prepared is not None
-                else matcher._matcher.prepare_features(gallery_feats[int(gi)])
+                else matcher.prepare_features(gallery_feats[int(gi)])
             )
-            inliers = matcher._matcher.match_num_inliers_prepared(
-                query_prepared, g_prepared
-            )
-            inlier_matrix[qi, gi] = _offset + float(inliers)
+            match_count = matcher.count_matches_prepared(query_prepared, g_prepared)
+            score_matrix[qi, gi] = _offset + float(match_count)
         del query_prepared
 
         # Throttle memory cleanup — MPS only, every 50 queries
@@ -796,12 +800,11 @@ def _mode_test(
 
     # Filter valid queries (label >= 0)
     valid_mask = query_labels_arr >= 0
-    inlier_matrix_valid = inlier_matrix[valid_mask]
+    score_matrix_valid = score_matrix[valid_mask]
     query_labels_valid = query_labels_arr[valid_mask]
     num_valid = int(valid_mask.sum())
-
-    metrics_dict = _compute_metrics_from_inlier_matrix(
-        inlier_matrix_valid, query_labels_valid, gallery_labels
+    metrics_dict = _compute_metrics_from_score_matrix(
+        score_matrix_valid, query_labels_valid, gallery_labels
     )
     metrics_dict["num_queries"] = num_valid
     metrics_dict["num_gallery"] = num_gallery
@@ -922,8 +925,8 @@ def main(argv: list[str] | None = None) -> None:
         "--precompute-gallery-tensors",
         action="store_true",
         help=(
-            "Test mode: precompute gallery tensors once on device for faster matching "
-            "(higher memory; known to be unstable on MPS — use with caution)."
+            "Precompute gallery tensors once on device for faster matching in "
+            "sample/test mode (higher memory; use with caution on MPS)."
         ),
     )
     parser.add_argument(
@@ -1012,6 +1015,7 @@ def main(argv: list[str] | None = None) -> None:
             sample_limit=args.sample_limit,
             sample_gallery_limit=args.sample_gallery_limit,
             top_k_sample=args.top_k_sample,
+            precompute_gallery_tensors=args.precompute_gallery_tensors,
         )
 
     elif args.mode == "test":

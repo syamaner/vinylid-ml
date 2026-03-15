@@ -84,15 +84,28 @@ class MatchResult:
     """Result of matching two ``KeypointFeatures`` images with LightGlue.
 
     Attributes:
-        num_inliers: Number of retained feature correspondences.
-        inlier_scores: Per-match confidence scores of shape ``(num_inliers,)``,
-            in ``[0, 1]``.  Empty array when ``num_inliers == 0``.
-        confidence: Mean inlier score in ``[0, 1]``.  Zero if no matches found.
+        num_matches: Number of retained correspondences after LightGlue's
+            internal pruning / thresholding. This is not a geometrically
+            verified inlier count from RANSAC / homography fitting.
+        match_scores: Per-correspondence confidence scores of shape
+            ``(num_matches,)``, in ``[0, 1]``. Empty array when
+            ``num_matches == 0``.
+        confidence: Mean match score in ``[0, 1]``. Zero if no matches found.
     """
 
-    num_inliers: int
-    inlier_scores: NDArray[np.float32]
+    num_matches: int
+    match_scores: NDArray[np.float32]
     confidence: float
+
+    @property
+    def num_inliers(self) -> int:
+        """Backward-compatible alias for ``num_matches``."""
+        return self.num_matches
+
+    @property
+    def inlier_scores(self) -> NDArray[np.float32]:
+        """Backward-compatible alias for ``match_scores``."""
+        return self.match_scores
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +192,11 @@ class LightGlueMatcher:
     """LightGlue feature matcher.
 
     Matches two ``KeypointFeatures`` using LightGlue's cross-attention
-    transformer architecture.  LightGlue's built-in adaptive point pruning and
-    confidence thresholding reject outliers — no explicit RANSAC step is required.
+    transformer architecture. LightGlue's built-in adaptive point pruning and
+    confidence thresholding reject weak correspondences. No explicit geometric
+    verification step (for example RANSAC / homography estimation) is applied
+    here, so reported counts are retained LightGlue correspondences rather than
+    geometrically verified inliers.
 
     Args:
         device: Torch device.  ``None`` = auto-detect.
@@ -216,28 +232,29 @@ class LightGlueMatcher:
             feats1: Prepared features for image 1.
 
         Returns:
-            ``MatchResult`` with inlier count and per-match confidence scores.
+            ``MatchResult`` with retained match count and per-match confidence
+            scores.
         """
         with torch.inference_mode():
             raw: dict[str, Any] = self._model({"image0": feats0, "image1": feats1})
 
         matches_tensor = _extract_matches_tensor(raw)
         scores_tensor = _extract_scores_tensor(raw)
-        num_inliers = int(matches_tensor.shape[0])
-        inlier_scores = scores_tensor.detach().cpu().numpy().astype(np.float32)
-        confidence = float(inlier_scores.mean()) if num_inliers > 0 else 0.0
+        num_matches = int(matches_tensor.shape[0])
+        match_scores = scores_tensor.detach().cpu().numpy().astype(np.float32)
+        confidence = float(match_scores.mean()) if num_matches > 0 else 0.0
         return MatchResult(
-            num_inliers=num_inliers,
-            inlier_scores=inlier_scores,
+            num_matches=num_matches,
+            match_scores=match_scores,
             confidence=confidence,
         )
 
-    def match_num_inliers_prepared(
+    def count_matches_prepared(
         self,
         feats0: dict[str, torch.Tensor],
         feats1: dict[str, torch.Tensor],
     ) -> int:
-        """Return only inlier count for two pre-converted feature dicts.
+        """Return only the retained match count for two prepared feature dicts.
 
         This avoids score extraction and CPU transfers in hot evaluation loops.
 
@@ -246,40 +263,52 @@ class LightGlueMatcher:
             feats1: Prepared features for image 1.
 
         Returns:
-            Number of matched inliers retained by LightGlue.
+            Number of retained correspondences returned by LightGlue.
         """
         with torch.inference_mode():
             raw: dict[str, Any] = self._model({"image0": feats0, "image1": feats1})
         matches_tensor = _extract_matches_tensor(raw)
         return int(matches_tensor.shape[0])
 
+    def match_num_inliers_prepared(
+        self,
+        feats0: dict[str, torch.Tensor],
+        feats1: dict[str, torch.Tensor],
+    ) -> int:
+        """Backward-compatible alias for ``count_matches_prepared``."""
+        return self.count_matches_prepared(feats0, feats1)
+
     def match(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> MatchResult:
-        """Match two ``KeypointFeatures`` and return inlier statistics.
+        """Match two ``KeypointFeatures`` and return match statistics.
 
         Args:
             kp0: Features for the first (e.g. query) image.
             kp1: Features for the second (e.g. gallery) image.
 
         Returns:
-            ``MatchResult`` with inlier count and per-match confidence scores.
+            ``MatchResult`` with retained match count and per-match confidence
+            scores.
         """
         feats0 = self.prepare_features(kp0)
         feats1 = self.prepare_features(kp1)
         return self.match_prepared(feats0, feats1)
-
-    def match_num_inliers(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> int:
-        """Return only inlier count for two images.
+    def count_matches(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> int:
+        """Return only the retained match count for two images.
 
         Args:
             kp0: Features for the first (e.g. query) image.
             kp1: Features for the second (e.g. gallery) image.
 
         Returns:
-            Number of matched inliers retained by LightGlue.
+            Number of retained correspondences returned by LightGlue.
         """
         feats0 = self.prepare_features(kp0)
         feats1 = self.prepare_features(kp1)
-        return self.match_num_inliers_prepared(feats0, feats1)
+        return self.count_matches_prepared(feats0, feats1)
+
+    def match_num_inliers(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> int:
+        """Backward-compatible alias for ``count_matches``."""
+        return self.count_matches(kp0, kp1)
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +338,38 @@ class LocalFeatureMatcher:
         _device = device or _get_device()
         self._extractor = SuperPointExtractor(max_num_keypoints=max_keypoints, device=_device)
         self._matcher = LightGlueMatcher(device=_device)
+
+    def extract_feature(self, image: Image.Image | Path) -> KeypointFeatures:
+        """Extract keypoint features for a single image or image path."""
+        return self._extractor.extract(image)
+
+    def prepare_features(self, kp: KeypointFeatures) -> dict[str, torch.Tensor]:
+        """Convert one ``KeypointFeatures`` to LightGlue-ready tensors."""
+        return self._matcher.prepare_features(kp)
+
+    def match_prepared(
+        self,
+        feats0: dict[str, torch.Tensor],
+        feats1: dict[str, torch.Tensor],
+    ) -> MatchResult:
+        """Match two prepared feature dicts."""
+        return self._matcher.match_prepared(feats0, feats1)
+
+    def count_matches_prepared(
+        self,
+        feats0: dict[str, torch.Tensor],
+        feats1: dict[str, torch.Tensor],
+    ) -> int:
+        """Count retained LightGlue correspondences for prepared feature dicts."""
+        return self._matcher.count_matches_prepared(feats0, feats1)
+
+    def match(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> MatchResult:
+        """Match two extracted feature sets."""
+        return self._matcher.match(kp0, kp1)
+
+    def count_matches(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> int:
+        """Count retained LightGlue correspondences for two extracted feature sets."""
+        return self._matcher.count_matches(kp0, kp1)
 
     def extract_features(
         self,
@@ -372,26 +433,26 @@ class LocalFeatureMatcher:
         """Rank gallery images by match quality against a query.
 
         Matches the query against every gallery image and sorts by descending
-        ``num_inliers``.
+        retained LightGlue match count.
 
         Args:
             query: Query image keypoint features.
             gallery: Gallery image keypoint features (one per album).
 
         Returns:
-            Array of gallery indices sorted by descending inlier count (best match
-            first), shape ``(len(gallery),)``.
+            Array of gallery indices sorted by descending match count (best
+            match first), shape ``(len(gallery),)``.
         """
-        query_prepared = self._matcher.prepare_features(query)
-        gallery_prepared = [self._matcher.prepare_features(g) for g in gallery]
-        inlier_counts = np.array(
+        query_prepared = self.prepare_features(query)
+        gallery_prepared = [self.prepare_features(g) for g in gallery]
+        match_counts = np.array(
             [
-                self._matcher.match_num_inliers_prepared(query_prepared, g_prepared)
+                self.count_matches_prepared(query_prepared, g_prepared)
                 for g_prepared in gallery_prepared
             ],
             dtype=np.int64,
         )
-        return np.argsort(-inlier_counts).astype(np.intp)
+        return np.argsort(-match_counts).astype(np.intp)
 
     def measure_latency(
         self,
@@ -426,16 +487,16 @@ class LocalFeatureMatcher:
         path0, path1 = image_paths[0], image_paths[1]
 
         for _ in range(n_warmup):
-            kp0 = self._extractor.extract(path0)
-            kp1 = self._extractor.extract(path1)
-            self._matcher.match(kp0, kp1)
+            kp0 = self.extract_feature(path0)
+            kp1 = self.extract_feature(path1)
+            self.match(kp0, kp1)
 
         times_ms: list[float] = []
         for _ in range(n_timed):
             t0 = time.perf_counter()
-            kp0 = self._extractor.extract(path0)
-            kp1 = self._extractor.extract(path1)
-            self._matcher.match(kp0, kp1)
+            kp0 = self.extract_feature(path0)
+            kp1 = self.extract_feature(path1)
+            self.match(kp0, kp1)
             times_ms.append((time.perf_counter() - t0) * 1000.0)
 
         times_ms.sort()
