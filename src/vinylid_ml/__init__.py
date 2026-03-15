@@ -6,6 +6,18 @@ import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from vinylid_ml.apple_featureprint import (
+        FEATUREPRINT_MODEL_ID as FEATUREPRINT_MODEL_ID,
+    )
+    from vinylid_ml.apple_featureprint import (
+        embed_images as embed_images,
+    )
+    from vinylid_ml.apple_featureprint import (
+        extract_feature_vector as extract_feature_vector,
+    )
+    from vinylid_ml.apple_featureprint import (
+        measure_featureprint_latency as measure_featureprint_latency,
+    )
     from vinylid_ml.eval_metrics import (
         CalibrationResult as CalibrationResult,
     )
@@ -63,6 +75,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ALL_MODEL_IDS",
+    "FEATUREPRINT_MODEL_ID",
     "CalibrationResult",
     "DINOv2Embedder",
     "EmbeddingModel",
@@ -76,14 +89,21 @@ __all__ = [
     "compute_nn_ambiguity",
     "create_model",
     "embed_dataset",
+    "embed_images",
+    "extract_feature_vector",
     "gem_pool",
     "generate_report",
     "get_device",
     "load_embeddings",
+    "measure_featureprint_latency",
     "save_embeddings",
 ]
 
 _LAZY_MODULES: dict[str, str] = {
+    "FEATUREPRINT_MODEL_ID": "vinylid_ml.apple_featureprint",
+    "embed_images": "vinylid_ml.apple_featureprint",
+    "extract_feature_vector": "vinylid_ml.apple_featureprint",
+    "measure_featureprint_latency": "vinylid_ml.apple_featureprint",
     "CalibrationResult": "vinylid_ml.eval_metrics",
     "NNAmbiguityResult": "vinylid_ml.eval_metrics",
     "compute_confidence_calibration": "vinylid_ml.eval_metrics",
