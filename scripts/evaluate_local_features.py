@@ -5,9 +5,10 @@ Two evaluation modes:
 
   ``--mode sample``  (primary — SIFT comparison):
     Phone-photo sample (55 photos, 50 high-confidence matched) vs 855-album
-    test-split gallery.  Per-query pre-filter using score-weighted mean SuperPoint
-    descriptors selects top-50 candidates; LightGlue re-ranks them.  Reports
-    R@1/R@5/mAP@5/MRR with direct SIFT baseline comparison.
+    test-split gallery.  Per-query A4-sscd cosine similarity selects top-50
+    candidates (falls back to SuperPoint mean-descriptor if SSCD unavailable);
+    LightGlue re-ranks them.  Reports R@1/R@5/mAP@5/MRR with direct SIFT
+    baseline comparison.
 
   ``--mode test``  (full test split via A4-sscd pre-filtering):
     4 564 query images x top-K A4-sscd candidates re-ranked by LightGlue
@@ -486,6 +487,9 @@ def _mode_sample(
     gallery_labels = np.array([album_to_label[aid] for aid in gallery_album_ids], dtype=np.intp)
 
     # ── Run matching for each sample photo ────────────────────────────────
+    # Offset ensures any evaluated candidate (inliers ≥ 0) outscores
+    # non-evaluated items whose score is the pre-filter similarity (≤ 1).
+    _offset: float = 10_000.0
     num_queries = len(matched)
     inlier_matrix = np.zeros((num_queries, len(gallery_paths)), dtype=np.float32)
     query_labels: list[int] = []
@@ -514,7 +518,9 @@ def _mode_sample(
             query_labels[-1] = -1
             continue
 
-        # Pre-filter: select top-K gallery candidates via cosine similarity
+        # Pre-filter: select top-K gallery candidates via cosine similarity.
+        # Set the row baseline to pre-filter sims so non-candidates always rank
+        # below any evaluated candidate, even one with 0 LightGlue inliers.
         if gallery_sscd is not None and sscd_model is not None and sscd_tfm is not None:
             # Primary: A4-sscd cross-domain invariant pre-filter
             qt = cast("torch.Tensor", sscd_tfm(photo_img)).unsqueeze(0)
@@ -522,21 +528,25 @@ def _mode_sample(
             sims = gallery_sscd @ query_sscd  # (N_gallery,)
             k = min(top_k_sample, len(gallery_feats))
             candidate_indices: list[int] = np.argsort(-sims)[:k].tolist()
+            inlier_matrix[qi] = sims  # non-candidates keep sim ∈ [-1, 1] as sentinel
         elif gallery_global is not None:
             # Fallback: SuperPoint mean descriptor (poor cross-domain recall)
             query_global = _compute_global_descriptor(query_feat)
             sims = gallery_global @ query_global  # (N_gallery,)
             k = min(top_k_sample, len(gallery_feats))
             candidate_indices = np.argsort(-sims)[:k].tolist()
+            inlier_matrix[qi] = sims  # non-candidates keep sim ∈ [-1, 1] as sentinel
         else:
             candidate_indices = list(range(len(gallery_feats)))
+            # Full pairwise: all items evaluated, zeros are fine as baseline
 
+        use_offset = len(candidate_indices) < len(gallery_feats)
         query_prepared = matcher._matcher.prepare_features(query_feat)
         for gi in candidate_indices:
             g_prepared = matcher._matcher.prepare_features(gallery_feats[gi])
-            inlier_matrix[qi, gi] = float(
-                matcher._matcher.match_num_inliers_prepared(query_prepared, g_prepared)
-            )
+            inliers = float(matcher._matcher.match_num_inliers_prepared(query_prepared, g_prepared))
+            # Candidates get offset+inliers so they always outscore non-candidates (sim ≤ 1)
+            inlier_matrix[qi, gi] = (_offset + inliers) if use_offset else inliers
         del query_prepared
 
         # Per-query MPS memory cleanup (minimal cost for K=50 matches/query)
@@ -547,12 +557,19 @@ def _mode_sample(
         top1_idx = int(np.argmax(inlier_matrix[qi]))
         top1_album = gallery_album_ids[top1_idx]
         correct = top1_album == album_id
+        # Report true inlier count: undo offset if candidate, clamp to 0 for non-candidates
+        top1_raw = float(inlier_matrix[qi, top1_idx])
+        top1_inliers_count = (
+            int(top1_raw - _offset)
+            if use_offset and top1_raw >= _offset
+            else int(max(0.0, top1_raw))
+        )
         per_query_rows.append(
             {
                 "filename": filename,
                 "true_album_id": album_id,
                 "top1_album_id": top1_album,
-                "top1_inliers": int(inlier_matrix[qi, top1_idx]),
+                "top1_inliers": top1_inliers_count,
                 "correct": correct,
             }
         )
@@ -887,8 +904,9 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=50,
         help=(
-            "Sample mode: pre-filter to this many gallery candidates via mean-descriptor "
-            "cosine sim before LightGlue.  0 = full pairwise matching (default: 50)."
+            "Sample mode: pre-filter to this many gallery candidates via A4-sscd cosine "
+            "similarity (falls back to SuperPoint mean-descriptor if SSCD unavailable). "
+            "0 = full pairwise matching (default: 50)."
         ),
     )
     parser.add_argument(

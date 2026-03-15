@@ -321,13 +321,15 @@ class LocalFeatureMatcher:
             image_paths: Images to process.
             batch_size: Passed through to ``SuperPointExtractor.extract_batch``.
             cache_dir: Directory for ``.npz`` feature cache.  Defaults to
-                ``data/local_features/C2-superpoint-lightglue/``.
+                ``~/.cache/vinylid_ml/local_features/C2-superpoint-lightglue/``.
 
         Returns:
             List of ``KeypointFeatures`` aligned with ``image_paths``.
         """
         resolved_cache = (
-            cache_dir if cache_dir is not None else Path("data/local_features") / LOCAL_FEATURE_MODEL_ID
+            cache_dir
+            if cache_dir is not None
+            else Path.home() / ".cache" / "vinylid_ml" / "local_features" / LOCAL_FEATURE_MODEL_ID
         )
         resolved_cache.mkdir(parents=True, exist_ok=True)
         results: list[KeypointFeatures | None] = [None] * len(image_paths)
@@ -579,7 +581,8 @@ def _to_image_tensor(image: Image.Image | Path, device: torch.device) -> torch.T
         if not image.exists():
             raise FileNotFoundError(f"Image not found: {image}")
         try:
-            pil_img = Image.open(image).convert("RGB")
+            with Image.open(image) as _opened:
+                pil_img = _opened.convert("RGB")
         except Exception as exc:
             raise RuntimeError(f"Could not open image {image}: {exc}") from exc
     else:
