@@ -124,6 +124,11 @@ class SuperPointExtractor:
         self._max_kp = max_num_keypoints
         self._model: _SuperPointT = _load_superpoint(max_num_keypoints, self._device)
 
+    @property
+    def max_num_keypoints(self) -> int:
+        """Maximum number of keypoints to detect per image."""
+        return self._max_kp
+
     def extract(self, image: Image.Image | Path) -> KeypointFeatures:
         """Extract keypoints and descriptors from a single image.
 
@@ -336,8 +341,9 @@ class LocalFeatureMatcher:
         missing_paths: list[Path] = []
         missing_indices: list[int] = []
 
+        max_kp = self._extractor.max_num_keypoints
         for idx, path in enumerate(image_paths):
-            cache_path = _cache_path_for(path, resolved_cache)
+            cache_path = _cache_path_for(path, resolved_cache, max_kp)
             if cache_path.exists():
                 results[idx] = _load_cached_features(cache_path)
             else:
@@ -347,7 +353,7 @@ class LocalFeatureMatcher:
         if missing_paths:
             extracted = self._extractor.extract_batch(missing_paths, batch_size=batch_size)
             for idx, path, kp in zip(missing_indices, missing_paths, extracted, strict=True):
-                cache_path = _cache_path_for(path, resolved_cache)
+                cache_path = _cache_path_for(path, resolved_cache, max_kp)
                 _save_cached_features(kp, cache_path)
                 results[idx] = kp
 
@@ -670,21 +676,25 @@ def _extract_scores_tensor(raw: dict[str, Any]) -> torch.Tensor:
     return scores_tensor
 
 
-def _cache_path_for(image_path: Path, cache_dir: Path) -> Path:
+def _cache_path_for(image_path: Path, cache_dir: Path, max_num_keypoints: int) -> Path:
     """Compute the ``.npz`` cache path for an image.
 
     The filename is the hex-encoded SHA-256 digest of the absolute resolved path
-    string, ensuring uniqueness across directories without depending on filename
-    conventions.
+    and ``max_num_keypoints``, so caches from different extractor configurations
+    never collide.  Changing ``max_num_keypoints`` automatically produces cache
+    misses rather than silently reusing stale features.
 
     Args:
         image_path: Path to the image.
         cache_dir: Directory that will contain cached ``.npz`` files.
+        max_num_keypoints: Extractor keypoint limit — included in the key so
+            runs with different limits use separate cache entries.
 
     Returns:
         ``cache_dir / "<sha256>.npz"``.
     """
-    key = hashlib.sha256(str(image_path.resolve()).encode()).hexdigest()
+    key_input = f"{image_path.resolve()}|max_kp={max_num_keypoints}"
+    key = hashlib.sha256(key_input.encode()).hexdigest()
     return cache_dir / f"{key}.npz"
 
 

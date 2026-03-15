@@ -40,7 +40,7 @@ from vinylid_ml.local_features import (
 # Test fixtures / helpers
 # ---------------------------------------------------------------------------
 
-_FIXTURE_DIR = Path("tests/fixtures/gallery")
+_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "gallery"
 _FIXTURE_PATHS = [
     _FIXTURE_DIR / "metallica_black_500.png",
     _FIXTURE_DIR / "metallica_black_2000.png",
@@ -275,11 +275,14 @@ class TestFeatureCache:
     """Tests for .npz feature caching helpers."""
 
     def test_cache_path_is_sha256_based(self, tmp_path: Path) -> None:
-        """Cache filename is SHA-256 of the absolute image path."""
+        """Cache filename is SHA-256 of the absolute image path and max_num_keypoints."""
         img_path = tmp_path / "img.jpg"
         cache_dir = tmp_path / "cache"
-        result = _cache_path_for(img_path, cache_dir)
-        expected_key = hashlib.sha256(str(img_path.resolve()).encode()).hexdigest()
+        max_kp = 512
+        result = _cache_path_for(img_path, cache_dir, max_kp)
+        expected_key = hashlib.sha256(
+            f"{img_path.resolve()}|max_kp={max_kp}".encode()
+        ).hexdigest()
         assert result == cache_dir / f"{expected_key}.npz"
 
     def test_cache_roundtrip_preserves_features(self, tmp_path: Path) -> None:
