@@ -134,16 +134,17 @@ def _compute_metrics_from_inlier_matrix(
     r_at_1 = float(matches[:, :1].any(axis=1).mean())
     r_at_5 = float(matches[:, :5].any(axis=1).mean())
 
-    # mAP@5
+    # mAP@5 — guard against gallery smaller than 5 and normalise by actual hits
+    k_max = min(5, matches.shape[1])
     ap_values: list[float] = []
     for i in range(len(query_labels)):
         ap = 0.0
         n_hits = 0
-        for k in range(5):
+        for k in range(k_max):
             if matches[i, k]:
                 n_hits += 1
                 ap += n_hits / (k + 1)
-        ap_values.append(ap / min(1, n_hits) if n_hits > 0 else 0.0)
+        ap_values.append(ap / n_hits if n_hits > 0 else 0.0)
     map_at_5 = float(np.mean(ap_values))
 
     # MRR
@@ -928,6 +929,8 @@ def main(argv: list[str] | None = None) -> None:
         gallery_root = (config_dir / gallery_root).resolve()
 
     test_sample_dir = Path(str(config["paths"]["test_sample"]))
+    if not test_sample_dir.is_absolute():
+        test_sample_dir = (config_dir / test_sample_dir).resolve()
     data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
     test_sample_matched_csv = data_dir / "test_sample_matched.csv"

@@ -349,6 +349,11 @@ class LocalFeatureMatcher:
                 _save_cached_features(kp, cache_path)
                 results[idx] = kp
 
+        none_paths = [image_paths[i] for i, r in enumerate(results) if r is None]
+        if none_paths:
+            raise RuntimeError(
+                f"Feature extraction failed for {len(none_paths)} path(s): {none_paths}"
+            )
         return [r for r in results if r is not None]
 
     def rank_gallery(
@@ -705,10 +710,10 @@ def _load_cached_features(path: Path) -> KeypointFeatures:
     Returns:
         ``KeypointFeatures`` with float32 numpy arrays.
     """
-    data: Any = np.load(path)
-    return KeypointFeatures(
-        keypoints=data["keypoints"].astype(np.float32),
-        descriptors=data["descriptors"].astype(np.float32),
-        scores=data["scores"].astype(np.float32),
-        image_size=(int(data["image_size"][0]), int(data["image_size"][1])),
-    )
+    with np.load(path) as data:
+        return KeypointFeatures(
+            keypoints=data["keypoints"].astype(np.float32),
+            descriptors=data["descriptors"].astype(np.float32),
+            scores=data["scores"].astype(np.float32),
+            image_size=(int(data["image_size"][0]), int(data["image_size"][1])),
+        )
