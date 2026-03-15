@@ -211,9 +211,13 @@ class TestToImageTensor:
         with pytest.raises(FileNotFoundError, match="Image not found"):
             _to_image_tensor(tmp_path / "missing.jpg", torch.device("cpu"))
 
-    def test_loads_fixture_image_correctly(self) -> None:
-        """Fixture PNG loads successfully and has 3 channels."""
-        t = _to_image_tensor(_FIXTURE_PATHS[0], torch.device("cpu"))
+    def test_loads_fixture_image_correctly(self, tmp_path: Path) -> None:
+        """Path to a valid PNG on disk loads successfully and has 3 channels."""
+        from PIL import Image
+
+        img_path = tmp_path / "synthetic.png"
+        Image.new("RGB", (64, 64), color=(100, 150, 200)).save(img_path)
+        t = _to_image_tensor(img_path, torch.device("cpu"))
         assert t.dim() == 3
         assert t.shape[0] == 3
 

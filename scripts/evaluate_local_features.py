@@ -495,6 +495,15 @@ def _mode_sample(
     query_labels: list[int] = []
     per_query_rows: list[dict[str, object]] = []
 
+    # Precompute gallery tensors once — avoids re-preparing the same gallery features
+    # inside every query's inner candidate loop (mirrors _mode_test's optional precompute).
+    logger.info("preparing_gallery_tensors", n=len(gallery_feats))
+    t_prep = time.monotonic()
+    gallery_prepared_list: list[dict[str, torch.Tensor]] = [
+        matcher._matcher.prepare_features(gfeat) for gfeat in gallery_feats
+    ]
+    logger.info("gallery_tensor_prep_done", elapsed_s=round(time.monotonic() - t_prep, 1))
+
     t0 = time.monotonic()
     for qi, (_, row) in enumerate(matched.iterrows()):
         album_id = str(row["matched_album_id"])
@@ -543,7 +552,7 @@ def _mode_sample(
         use_offset = len(candidate_indices) < len(gallery_feats)
         query_prepared = matcher._matcher.prepare_features(query_feat)
         for gi in candidate_indices:
-            g_prepared = matcher._matcher.prepare_features(gallery_feats[gi])
+            g_prepared = gallery_prepared_list[gi]
             inliers = float(matcher._matcher.match_num_inliers_prepared(query_prepared, g_prepared))
             # Candidates get offset+inliers so they always outscore non-candidates (sim ≤ 1)
             inlier_matrix[qi, gi] = (_offset + inliers) if use_offset else inliers
@@ -770,9 +779,9 @@ def _mode_test(
             inlier_matrix[qi, gi] = _offset + float(inliers)
         del query_prepared
 
-        # Free MPS/GPU memory accumulated during the inner loop
-        gc.collect()
-        if torch.backends.mps.is_available():
+        # Throttle memory cleanup — MPS only, every 50 queries
+        if torch.backends.mps.is_available() and (qi + 1) % 50 == 0:
+            gc.collect()
             torch.mps.empty_cache()
 
         if (qi + 1) % 500 == 0:
@@ -927,7 +936,7 @@ def main(argv: list[str] | None = None) -> None:
         "--cache-dir",
         type=Path,
         default=None,
-        help="Feature cache directory (default: data/local_features/C2-superpoint-lightglue/).",
+        help="Feature cache directory (default: <data_dir>/local_features/C2-superpoint-lightglue/).",
     )
 
     args = parser.parse_args(argv)
@@ -961,11 +970,9 @@ def main(argv: list[str] | None = None) -> None:
     feature_cache_dir: Path = (
         args.cache_dir.resolve()
         if args.cache_dir
-        else data_dir.parent / "data" / "local_features" / LOCAL_FEATURE_MODEL_ID
+        else data_dir / "local_features" / LOCAL_FEATURE_MODEL_ID
     )
-    # Handle case where data_dir IS data/ (configs are in configs/)
-    if not feature_cache_dir.exists():
-        feature_cache_dir = data_dir / "local_features" / LOCAL_FEATURE_MODEL_ID
+    feature_cache_dir.mkdir(parents=True, exist_ok=True)
 
     run_dir = results_dir / LOCAL_FEATURE_MODEL_ID / timestamp
 
