@@ -45,6 +45,24 @@ if TYPE_CHECKING:
     from vinylid_ml.gallery import (
         save_embeddings as save_embeddings,
     )
+    from vinylid_ml.local_features import (
+        LOCAL_FEATURE_MODEL_ID as LOCAL_FEATURE_MODEL_ID,
+    )
+    from vinylid_ml.local_features import (
+        KeypointFeatures as KeypointFeatures,
+    )
+    from vinylid_ml.local_features import (
+        LightGlueMatcher as LightGlueMatcher,
+    )
+    from vinylid_ml.local_features import (
+        LocalFeatureMatcher as LocalFeatureMatcher,
+    )
+    from vinylid_ml.local_features import (
+        MatchResult as MatchResult,
+    )
+    from vinylid_ml.local_features import (
+        SuperPointExtractor as SuperPointExtractor,
+    )
     from vinylid_ml.models import (
         ALL_MODEL_IDS as ALL_MODEL_IDS,
     )
@@ -76,14 +94,20 @@ if TYPE_CHECKING:
 __all__ = [
     "ALL_MODEL_IDS",
     "FEATUREPRINT_MODEL_ID",
+    "LOCAL_FEATURE_MODEL_ID",
     "CalibrationResult",
     "DINOv2Embedder",
     "EmbeddingModel",
     "EmbeddingResult",
     "GalleryImageDataset",
+    "KeypointFeatures",
+    "LightGlueMatcher",
+    "LocalFeatureMatcher",
+    "MatchResult",
     "NNAmbiguityResult",
     "OpenCLIPEmbedder",
     "SSCDEmbedder",
+    "SuperPointExtractor",
     "VinylIDError",
     "compute_confidence_calibration",
     "compute_nn_ambiguity",
@@ -100,6 +124,12 @@ __all__ = [
 ]
 
 _LAZY_MODULES: dict[str, str] = {
+    "LOCAL_FEATURE_MODEL_ID": "vinylid_ml.local_features",
+    "KeypointFeatures": "vinylid_ml.local_features",
+    "LightGlueMatcher": "vinylid_ml.local_features",
+    "LocalFeatureMatcher": "vinylid_ml.local_features",
+    "MatchResult": "vinylid_ml.local_features",
+    "SuperPointExtractor": "vinylid_ml.local_features",
     "FEATUREPRINT_MODEL_ID": "vinylid_ml.apple_featureprint",
     "embed_images": "vinylid_ml.apple_featureprint",
     "extract_feature_vector": "vinylid_ml.apple_featureprint",

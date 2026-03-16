@@ -28,6 +28,21 @@
 - Gallery images are referenced by MusicBrainz UUID, not redistributed
 - See `configs/dataset.yaml` for dataset path configuration
 
+## LightGlue on MPS (Apple Silicon)
+- **CrossBlock SDPA patch**: LightGlue's `CrossBlock` uses manual einsum on non-CUDA devices. Patch
+  `layer.cross_attn.forward` with `types.MethodType` to call `F.scaled_dot_product_attention` — gives
+  ~2.25x speedup (243ms → 108ms/match in same-domain micro-benchmark). See `local_features._patch_cross_attention_sdpa`.
+- **`flash=True` does NOT help on MPS**: The half-precision SDPA path in `Attention.forward` is guarded
+  by `q.device.type == "cuda"`. On MPS, the code always falls to the plain SDPA branch (no FP16).
+- **MPS autocast is SLOWER for small tensors**: `torch.autocast(device_type="mps", dtype=torch.float16)`
+  adds overhead that outweighs FP16 gains at LightGlue's attention matrix sizes (1×4×512×64).
+  Metal FP16 benefit requires matrices ≥ 1024×1024 to be worthwhile.
+- **Cross-domain early-exit never fires**: Phone photo → catalog pairs have low token confidence at every
+  layer, so `depth_confidence=0.95` never triggers early stopping — all 9 layers always run (~350ms/match
+  cross-domain vs ~108ms same-domain). Real-world latency is ~17–42s/query (thermal throttling) at 512 kp.
+- **Pre-filter choice matters**: SuperPoint mean-descriptor pre-filter has ~15% recall@50 on phone×catalog
+  pairs. A4-sscd (trained for copy detection) is the correct pre-filter for cross-domain retrieval.
+
 ## Commit Messages
 - Reference the relevant plan section (e.g., "Section 4: implement manifest builder")
 - Include `Co-Authored-By: Oz <oz-agent@warp.dev>` when AI-assisted
