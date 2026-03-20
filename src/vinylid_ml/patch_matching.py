@@ -223,7 +223,14 @@ class DINOv2PatchExtractor:
 
         Returns:
             List of ``PatchFeatures``, one per batch item.
+
+        Raises:
+            ValueError: If ``len(image_sizes)`` does not match batch size.
         """
+        if len(image_sizes) != images.shape[0]:
+            raise ValueError(
+                f"image_sizes length {len(image_sizes)} != batch size {images.shape[0]}"
+            )
         images = images.to(self._device)
 
         with torch.inference_mode():
@@ -279,7 +286,8 @@ class PatchMatcher:
         sim = query.patches @ gallery.patches.T
         per_query_max = sim.max(axis=1)  # (N_q,)
         score = float(per_query_max.mean())
-        top_k_sims = np.sort(per_query_max)[::-1][:top_k].astype(np.float32)
+        k = min(top_k, len(per_query_max))
+        top_k_sims = np.sort(per_query_max)[::-1][:k].astype(np.float32)
         return PatchMatchResult(
             score=score,
             num_patches_matched=0,
@@ -323,7 +331,8 @@ class PatchMatcher:
 
         # Collect similarities for mutual pairs
         mutual_sims = sim[query_indices[mutual_mask], nn_q2g[mutual_mask]]
-        top_k_sims = np.sort(mutual_sims)[::-1][:top_k].astype(np.float32)
+        k = min(top_k, len(mutual_sims))
+        top_k_sims = np.sort(mutual_sims)[::-1][:k].astype(np.float32)
 
         return PatchMatchResult(
             score=score,
@@ -361,19 +370,24 @@ class PatchMatcher:
 # ---------------------------------------------------------------------------
 
 
-def cache_path_for(image_path: Path, cache_dir: Path) -> Path:
+def cache_path_for(image_path: Path, cache_dir: Path, input_size: int = 224) -> Path:
     """Compute the ``.npz`` cache path for an image.
 
-    The filename is the hex-encoded SHA-256 digest of the absolute resolved path.
+    The filename is the hex-encoded SHA-256 digest of the absolute resolved
+    path and ``input_size``, so caches from different extractor configurations
+    never collide.
 
     Args:
         image_path: Path to the image.
         cache_dir: Directory that will contain cached ``.npz`` files.
+        input_size: Extractor input resolution — included in the key so
+            runs with different resolutions use separate cache entries.
 
     Returns:
         ``cache_dir / "<sha256>.npz"``.
     """
-    key = hashlib.sha256(str(image_path.resolve()).encode()).hexdigest()
+    key_input = f"{image_path.resolve()}|input_size={input_size}"
+    key = hashlib.sha256(key_input.encode()).hexdigest()
     return cache_dir / f"{key}.npz"
 
 
@@ -433,8 +447,9 @@ def extract_with_cache(
     results: list[PatchFeatures | None] = [None] * len(image_paths)
     missing_indices: list[int] = []
 
+    input_sz = extractor.input_size
     for idx, path in enumerate(image_paths):
-        cp = cache_path_for(path, cache_dir)
+        cp = cache_path_for(path, cache_dir, input_size=input_sz)
         if cp.exists():
             results[idx] = load_cached_patches(cp)
         else:
@@ -448,7 +463,7 @@ def extract_with_cache(
         )
         for idx in missing_indices:
             pf = extractor.extract(image_paths[idx])
-            cp = cache_path_for(image_paths[idx], cache_dir)
+            cp = cache_path_for(image_paths[idx], cache_dir, input_size=input_sz)
             save_cached_patches(pf, cp)
             results[idx] = pf
 

@@ -194,11 +194,14 @@ class TestDINOv2PatchExtractor:
         assert pf.patches.shape == (256, 384)
         assert pf.patches.dtype == np.float32
 
-    def test_extract_from_path(self, patched_extractor: DINOv2PatchExtractor) -> None:
+    def test_extract_from_path(
+        self, patched_extractor: DINOv2PatchExtractor, tmp_path: Path
+    ) -> None:
         """extract() accepts a Path and returns 256 patches."""
-        if not _FIXTURE_PATHS[0].exists():
-            pytest.skip("Fixture images not available")
-        pf = patched_extractor.extract(_FIXTURE_PATHS[0])
+        img = Image.new("RGB", (300, 300), color=(64, 128, 192))
+        img_path = tmp_path / "test_img.jpg"
+        img.save(img_path)
+        pf = patched_extractor.extract(img_path)
         assert isinstance(pf, PatchFeatures)
         assert pf.patches.shape[0] == 256
 
@@ -215,6 +218,15 @@ class TestDINOv2PatchExtractor:
         assert len(results) == 3
         for pf in results:
             assert pf.patches.shape == (256, 384)
+
+    def test_extract_batch_size_mismatch_raises(
+        self, patched_extractor: DINOv2PatchExtractor
+    ) -> None:
+        """extract_batch() raises ValueError when image_sizes length != batch size."""
+        batch = torch.randn(3, 3, 224, 224)
+        sizes = [(300, 300), (400, 400)]  # 2 sizes for 3 images
+        with pytest.raises(ValueError, match="image_sizes length"):
+            patched_extractor.extract_batch(batch, sizes)
 
     def test_get_transforms_returns_compose(self, patched_extractor: DINOv2PatchExtractor) -> None:
         """get_transforms() returns a torchvision Compose pipeline."""
@@ -245,11 +257,17 @@ class TestPatchMatcherBestAvg:
         assert result.score < 0.99
 
     def test_top_k_sims_shape(self) -> None:
-        """top_k_patch_sims has exactly top_k entries."""
+        """top_k_patch_sims has at most top_k entries."""
         pf1 = _make_patch_features(256, 384, seed=1)
         pf2 = _make_patch_features(256, 384, seed=2)
         result = PatchMatcher.match_best_avg(pf1, pf2, top_k=5)
         assert result.top_k_patch_sims.shape == (5,)
+
+    def test_top_k_clamped_to_num_patches(self) -> None:
+        """top_k is clamped to N_query when top_k > N_query."""
+        pf = _make_patch_features(3, 384, seed=1)  # only 3 patches
+        result = PatchMatcher.match_best_avg(pf, pf, top_k=10)
+        assert len(result.top_k_patch_sims) == 3
 
     def test_top_k_sims_sorted_descending(self) -> None:
         """top_k_patch_sims are sorted in descending order."""
@@ -361,10 +379,11 @@ class TestCaching:
         self, patched_extractor: DINOv2PatchExtractor, tmp_path: Path
     ) -> None:
         """Second extract_with_cache call loads from .npz cache."""
-        if not _FIXTURE_PATHS[0].exists():
-            pytest.skip("Fixture images not available")
+        img = Image.new("RGB", (300, 300), color=(64, 128, 192))
+        img_path = tmp_path / "cache_test_img.jpg"
+        img.save(img_path)
         cache_dir = tmp_path / "cache"
-        paths = [_FIXTURE_PATHS[0]]
+        paths = [img_path]
 
         # First call — extract
         result1 = extract_with_cache(patched_extractor, paths, cache_dir)

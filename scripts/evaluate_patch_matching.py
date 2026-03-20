@@ -311,7 +311,7 @@ def run_evaluation(
         # Score matrix: (num_queries, num_gallery)
         # For top-K candidates: patch match score + large offset
         # For non-top-K: raw A4-sscd score (baseline ranking)
-        offset = 10_000.0
+        offset = 2.0
         score_matrix = a4_sim.copy().astype(np.float32)
 
         t0 = time.monotonic()
