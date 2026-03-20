@@ -32,6 +32,7 @@ import yaml
 from numpy.typing import NDArray
 
 from vinylid_ml.dataset import load_manifest, load_splits
+from vinylid_ml.eval_metrics import compute_retrieval_metrics
 from vinylid_ml.gallery import load_embeddings
 from vinylid_ml.patch_matching import (
     PATCH_MODEL_ID,
@@ -83,62 +84,6 @@ def _select_gallery_images(
     query_paths = [Path(str(r["image_path"])) for r in query_rows]
     query_album_ids = [str(r["album_id"]) for r in query_rows]
     return gallery_paths, gallery_album_ids, query_paths, query_album_ids
-
-
-# ---------------------------------------------------------------------------
-# Metrics helper
-# ---------------------------------------------------------------------------
-
-
-def _compute_metrics_from_score_matrix(
-    score_matrix: NDArray[np.float32],
-    query_labels: NDArray[np.intp],
-    gallery_labels: NDArray[np.intp],
-) -> dict[str, float]:
-    """Compute R@1, R@5, mAP@5, MRR from a retrieval score matrix.
-
-    Args:
-        score_matrix: Shape ``(num_queries, num_gallery)``. Higher = better.
-        query_labels: Shape ``(num_queries,)``.
-        gallery_labels: Shape ``(num_gallery,)``.
-
-    Returns:
-        Dict with retrieval metrics.
-    """
-    sorted_idx = np.argsort(-score_matrix, axis=1)
-    sorted_labels = gallery_labels[sorted_idx]
-    matches = sorted_labels == query_labels[:, np.newaxis]
-
-    r_at_1 = float(matches[:, :1].any(axis=1).mean())
-    r_at_5 = float(matches[:, :5].any(axis=1).mean())
-
-    k_max = min(5, matches.shape[1])
-    ap_values: list[float] = []
-    for i in range(len(query_labels)):
-        ap = 0.0
-        n_hits = 0
-        for k in range(k_max):
-            if matches[i, k]:
-                n_hits += 1
-                ap += n_hits / (k + 1)
-        ap_values.append(ap / n_hits if n_hits > 0 else 0.0)
-    map_at_5 = float(np.mean(ap_values))
-
-    mrr_values: list[float] = []
-    for i in range(len(query_labels)):
-        hit_positions = np.where(matches[i])[0]
-        if len(hit_positions) > 0:
-            mrr_values.append(1.0 / (int(hit_positions[0]) + 1))
-        else:
-            mrr_values.append(0.0)
-    mrr = float(np.mean(mrr_values))
-
-    return {
-        "recall_at_1": r_at_1,
-        "recall_at_5": r_at_5,
-        "map_at_5": map_at_5,
-        "mrr": mrr,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -349,10 +294,10 @@ def run_evaluation(
             logger.error("no_valid_queries")
             continue
 
-        metrics_dict = _compute_metrics_from_score_matrix(
+        retrieval = compute_retrieval_metrics(
             score_matrix_valid, query_labels_valid, gallery_labels
         )
-        metrics_dict["num_queries"] = num_valid
+        metrics_dict: dict[str, float | int] = retrieval.to_dict()
         metrics_dict["num_gallery"] = num_gallery
 
         total_elapsed = time.monotonic() - t0
@@ -361,10 +306,10 @@ def run_evaluation(
         logger.info(
             "c1_results",
             strategy=strat,
-            R_at_1=round(float(metrics_dict["recall_at_1"]), 4),
-            R_at_5=round(float(metrics_dict["recall_at_5"]), 4),
-            mAP_at_5=round(float(metrics_dict["map_at_5"]), 4),
-            MRR=round(float(metrics_dict["mrr"]), 4),
+            R_at_1=round(retrieval.recall_at_1, 4),
+            R_at_5=round(retrieval.recall_at_5, 4),
+            mAP_at_5=round(retrieval.map_at_5, 4),
+            MRR=round(retrieval.mrr, 4),
             num_queries=num_valid,
         )
 
@@ -394,10 +339,10 @@ def run_evaluation(
 
         print(
             f"\nC1 DINOv2 Patch Matching ({strat}, top-{top_k} pre-filter):\n"
-            f"  R@1={metrics_dict['recall_at_1']:.3f}  "
-            f"R@5={metrics_dict['recall_at_5']:.3f}  "
-            f"mAP@5={metrics_dict['map_at_5']:.3f}  "
-            f"MRR={metrics_dict['mrr']:.3f}\n"
+            f"  R@1={retrieval.recall_at_1:.3f}  "
+            f"R@5={retrieval.recall_at_5:.3f}  "
+            f"mAP@5={retrieval.map_at_5:.3f}  "
+            f"MRR={retrieval.mrr:.3f}\n"
             f"  queries={num_valid}  gallery={num_gallery}  "
             f"lat={metrics_dict['latency_per_query_s']:.2f}s/query\n"
             f"  Results: {strat_run_dir}\n"
