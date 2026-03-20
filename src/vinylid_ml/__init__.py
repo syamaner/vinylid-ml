@@ -87,6 +87,27 @@ if TYPE_CHECKING:
     from vinylid_ml.models import (
         get_device as get_device,
     )
+    from vinylid_ml.patch_matching import (
+        PATCH_DIM as PATCH_DIM,
+    )
+    from vinylid_ml.patch_matching import (
+        PATCH_MODEL_ID as PATCH_MODEL_ID,
+    )
+    from vinylid_ml.patch_matching import (
+        PATCHES_PER_IMAGE_224 as PATCHES_PER_IMAGE_224,
+    )
+    from vinylid_ml.patch_matching import (
+        DINOv2PatchExtractor as DINOv2PatchExtractor,
+    )
+    from vinylid_ml.patch_matching import (
+        PatchFeatures as PatchFeatures,
+    )
+    from vinylid_ml.patch_matching import (
+        PatchMatcher as PatchMatcher,
+    )
+    from vinylid_ml.patch_matching import (
+        PatchMatchResult as PatchMatchResult,
+    )
     from vinylid_ml.report import (
         generate_report as generate_report,
     )
@@ -95,8 +116,12 @@ __all__ = [
     "ALL_MODEL_IDS",
     "FEATUREPRINT_MODEL_ID",
     "LOCAL_FEATURE_MODEL_ID",
+    "PATCHES_PER_IMAGE_224",
+    "PATCH_DIM",
+    "PATCH_MODEL_ID",
     "CalibrationResult",
     "DINOv2Embedder",
+    "DINOv2PatchExtractor",
     "EmbeddingModel",
     "EmbeddingResult",
     "GalleryImageDataset",
@@ -106,6 +131,9 @@ __all__ = [
     "MatchResult",
     "NNAmbiguityResult",
     "OpenCLIPEmbedder",
+    "PatchFeatures",
+    "PatchMatchResult",
+    "PatchMatcher",
     "SSCDEmbedder",
     "SuperPointExtractor",
     "VinylIDError",
@@ -124,6 +152,13 @@ __all__ = [
 ]
 
 _LAZY_MODULES: dict[str, str] = {
+    "PATCH_DIM": "vinylid_ml.patch_matching",
+    "PATCH_MODEL_ID": "vinylid_ml.patch_matching",
+    "PATCHES_PER_IMAGE_224": "vinylid_ml.patch_matching",
+    "DINOv2PatchExtractor": "vinylid_ml.patch_matching",
+    "PatchFeatures": "vinylid_ml.patch_matching",
+    "PatchMatchResult": "vinylid_ml.patch_matching",
+    "PatchMatcher": "vinylid_ml.patch_matching",
     "LOCAL_FEATURE_MODEL_ID": "vinylid_ml.local_features",
     "KeypointFeatures": "vinylid_ml.local_features",
     "LightGlueMatcher": "vinylid_ml.local_features",
