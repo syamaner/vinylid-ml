@@ -16,7 +16,8 @@ Typical usage::
     extractor = DINOv2PatchExtractor()
     pf_query = extractor.extract(query_path)
     pf_gallery = extractor.extract(gallery_path)
-    score = PatchMatcher.match_best_avg(pf_query, pf_gallery)
+    result = PatchMatcher.match_best_avg(pf_query, pf_gallery)
+    score = result.score
 """
 
 from __future__ import annotations
@@ -42,6 +43,10 @@ __all__ = [
     "PatchFeatures",
     "PatchMatchResult",
     "PatchMatcher",
+    "cache_path_for",
+    "extract_with_cache",
+    "load_cached_patches",
+    "save_cached_patches",
 ]
 
 #: Model identifier used throughout the evaluation pipeline.
@@ -84,11 +89,24 @@ class PatchMatchResult:
     """Result of matching two images via patch-level cosine similarity.
 
     Attributes:
-        score: Aggregated matching score in ``[0, 1]``.  Higher = better match.
+        score: Aggregated patch-matching score based on cosine similarity.
+            Higher = better match.
+
+            * For ``best_avg``: mean of per-query-patch maximum cosine
+              similarities (one max per query patch, then averaged).
+              Range ``[-1, 1]``.
+            * For ``mutual_nn``: count of mutual nearest-neighbor patch pairs
+              normalised by ``min(N_query, N_gallery)``.  Range ``[0, 1]``.
         num_patches_matched: Number of mutual nearest-neighbor patch pairs
-            (only populated for ``mutual_nn`` strategy; 0 for ``best_avg``).
-        top_k_patch_sims: Top-K per-query-patch max similarities, shape ``(K,)``.
-            Useful for diagnostic analysis of match quality distribution.
+            (only populated for ``mutual_nn`` strategy; ``0`` for ``best_avg``).
+        top_k_patch_sims: Top-K patch-level cosine similarities, shape ``(K,)``.
+
+            * For ``best_avg``: top-K largest per-query-patch maximum cosine
+              similarities.
+            * For ``mutual_nn``: top-K cosine similarities of mutual
+              nearest-neighbor patch pairs.
+
+            Useful for diagnostic analysis of the match-quality distribution.
     """
 
     score: float
@@ -383,8 +401,12 @@ def load_cached_patches(path: Path) -> PatchFeatures:
         ``PatchFeatures`` with float32 numpy arrays.
     """
     with np.load(path) as data:
+        patches = data["patches"].astype(np.float32)
+        # Re-normalize to restore L2-unit-norm invariant after fp16 roundtrip.
+        norms = np.linalg.norm(patches, axis=-1, keepdims=True)
+        patches = patches / np.clip(norms, 1e-12, None)
         return PatchFeatures(
-            patches=data["patches"].astype(np.float32),
+            patches=patches,
             image_size=(int(data["image_size"][0]), int(data["image_size"][1])),
         )
 

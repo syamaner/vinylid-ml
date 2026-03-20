@@ -292,6 +292,16 @@ def run_evaluation(
         ["best_avg", "mutual_nn"] if strategy == "both" else [strategy]  # type: ignore[list-item]
     )
 
+    # Pre-extract query patch features once to avoid duplicating the most
+    # expensive step when running both strategies.
+    logger.info("extracting_query_patches", n=num_queries)
+    t_qe = time.monotonic()
+    query_patches = extract_with_cache(extractor, query_paths, cache_dir)
+    logger.info(
+        "query_extraction_done",
+        elapsed_s=round(time.monotonic() - t_qe, 1),
+    )
+
     for strat in strategies:
         model_id = f"{PATCH_MODEL_ID}-{strat}"
         strat_run_dir = run_dir / strat
@@ -312,12 +322,7 @@ def run_evaluation(
             # Get top-K A4-sscd candidates
             candidate_indices = np.argsort(-a4_sim[qi])[:top_k]
 
-            # Extract query patches
-            try:
-                query_pf = extractor.extract(query_paths[qi])
-            except (FileNotFoundError, RuntimeError) as exc:
-                logger.warning("query_extraction_error", idx=qi, error=str(exc))
-                continue
+            query_pf = query_patches[qi]
 
             # Patch matching vs each candidate
             for gi in candidate_indices:

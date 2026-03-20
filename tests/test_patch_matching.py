@@ -88,12 +88,15 @@ class TestConstants:
     """Tests for module-level constants."""
 
     def test_patch_model_id(self) -> None:
+        """PATCH_MODEL_ID equals 'C1-dinov2-patches'."""
         assert PATCH_MODEL_ID == "C1-dinov2-patches"
 
     def test_patch_dim(self) -> None:
+        """PATCH_DIM equals 384 (DINOv2 ViT-S/14 hidden dim)."""
         assert PATCH_DIM == 384
 
     def test_patches_per_image_224(self) -> None:
+        """PATCHES_PER_IMAGE_224 equals 256 (16x16 grid)."""
         assert PATCHES_PER_IMAGE_224 == 256
 
 
@@ -106,11 +109,13 @@ class TestPatchFeatures:
     """Tests for the PatchFeatures dataclass."""
 
     def test_shape_and_dtype(self) -> None:
+        """Patches have shape (N, 384) and dtype float32."""
         pf = _make_patch_features(256, 384)
         assert pf.patches.shape == (256, 384)
         assert pf.patches.dtype == np.float32
 
     def test_image_size_stored(self) -> None:
+        """image_size is stored as a (width, height) tuple of ints."""
         pf = _make_patch_features()
         w, h = pf.image_size
         assert isinstance(w, int)
@@ -119,6 +124,7 @@ class TestPatchFeatures:
         assert h == 480
 
     def test_patches_are_normalised(self) -> None:
+        """All patch vectors have unit L2 norm."""
         pf = _make_patch_features()
         norms = np.linalg.norm(pf.patches, axis=1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-5)
@@ -133,6 +139,7 @@ class TestPatchMatchResult:
     """Tests for the PatchMatchResult dataclass."""
 
     def test_fields(self) -> None:
+        """PatchMatchResult stores score, num_patches_matched, and top_k_patch_sims."""
         pmr = PatchMatchResult(
             score=0.75,
             num_patches_matched=42,
@@ -143,6 +150,7 @@ class TestPatchMatchResult:
         assert pmr.top_k_patch_sims.shape == (2,)
 
     def test_zero_score(self) -> None:
+        """PatchMatchResult with zero matches has score 0.0 and empty sims."""
         pmr = PatchMatchResult(
             score=0.0,
             num_patches_matched=0,
@@ -161,22 +169,25 @@ class TestDINOv2PatchExtractor:
     """Tests for the DINOv2PatchExtractor (mocked model)."""
 
     def test_input_size_validation(self) -> None:
+        """Reject input_size not divisible by 14."""
         with pytest.raises(ValueError, match="divisible by 14"):
             mock_model = _mock_dinov2_model()
             with patch("vinylid_ml.patch_matching.torch.hub.load", return_value=mock_model):
                 DINOv2PatchExtractor(device=torch.device("cpu"), input_size=225)
 
     def test_num_patches_224(self, patched_extractor: DINOv2PatchExtractor) -> None:
+        """224px input produces 256 patches (16x16 grid)."""
         assert patched_extractor.num_patches == 256  # 16x16
 
     def test_num_patches_518(self) -> None:
+        """518px input produces 1369 patches (37x37 grid)."""
         mock_model = _mock_dinov2_model()
         with patch("vinylid_ml.patch_matching.torch.hub.load", return_value=mock_model):
             ext = DINOv2PatchExtractor(device=torch.device("cpu"), input_size=518)
         assert ext.num_patches == 37 * 37  # 1369
 
     def test_extract_returns_patch_features(self, patched_extractor: DINOv2PatchExtractor) -> None:
-        # Use a small synthetic image
+        """extract() on a synthetic PIL image returns PatchFeatures with correct shape."""
         img = Image.new("RGB", (300, 300), color=(128, 128, 128))
         pf = patched_extractor.extract(img)
         assert isinstance(pf, PatchFeatures)
@@ -184,6 +195,7 @@ class TestDINOv2PatchExtractor:
         assert pf.patches.dtype == np.float32
 
     def test_extract_from_path(self, patched_extractor: DINOv2PatchExtractor) -> None:
+        """extract() accepts a Path and returns 256 patches."""
         if not _FIXTURE_PATHS[0].exists():
             pytest.skip("Fixture images not available")
         pf = patched_extractor.extract(_FIXTURE_PATHS[0])
@@ -191,10 +203,12 @@ class TestDINOv2PatchExtractor:
         assert pf.patches.shape[0] == 256
 
     def test_extract_missing_path_raises(self, patched_extractor: DINOv2PatchExtractor) -> None:
+        """extract() raises FileNotFoundError for non-existent path."""
         with pytest.raises(FileNotFoundError):
             patched_extractor.extract(Path("/nonexistent/image.jpg"))
 
     def test_extract_batch(self, patched_extractor: DINOv2PatchExtractor) -> None:
+        """extract_batch() returns one PatchFeatures per batch item."""
         batch = torch.randn(3, 3, 224, 224)
         sizes = [(300, 300), (400, 400), (500, 500)]
         results = patched_extractor.extract_batch(batch, sizes)
@@ -203,6 +217,7 @@ class TestDINOv2PatchExtractor:
             assert pf.patches.shape == (256, 384)
 
     def test_get_transforms_returns_compose(self, patched_extractor: DINOv2PatchExtractor) -> None:
+        """get_transforms() returns a torchvision Compose pipeline."""
         t = patched_extractor.get_transforms()
         assert isinstance(t, transforms.Compose)
 
@@ -216,12 +231,13 @@ class TestPatchMatcherBestAvg:
     """Tests for PatchMatcher.match_best_avg."""
 
     def test_same_features_high_score(self) -> None:
+        """Self-match returns score close to 1.0."""
         pf = _make_patch_features(256, 384, seed=42)
         result = PatchMatcher.match_best_avg(pf, pf)
-        # Same image patches → cosine sim should be ~1.0
         assert result.score > 0.99
 
     def test_random_features_lower_score(self) -> None:
+        """Random feature pairs score lower than self-match."""
         pf1 = _make_patch_features(256, 384, seed=1)
         pf2 = _make_patch_features(256, 384, seed=2)
         result = PatchMatcher.match_best_avg(pf1, pf2)
@@ -229,12 +245,14 @@ class TestPatchMatcherBestAvg:
         assert result.score < 0.99
 
     def test_top_k_sims_shape(self) -> None:
+        """top_k_patch_sims has exactly top_k entries."""
         pf1 = _make_patch_features(256, 384, seed=1)
         pf2 = _make_patch_features(256, 384, seed=2)
         result = PatchMatcher.match_best_avg(pf1, pf2, top_k=5)
         assert result.top_k_patch_sims.shape == (5,)
 
     def test_top_k_sims_sorted_descending(self) -> None:
+        """top_k_patch_sims are sorted in descending order."""
         pf1 = _make_patch_features(256, 384, seed=1)
         pf2 = _make_patch_features(256, 384, seed=2)
         result = PatchMatcher.match_best_avg(pf1, pf2, top_k=10)
@@ -242,6 +260,7 @@ class TestPatchMatcherBestAvg:
         assert np.all(diffs <= 1e-7)  # sorted descending
 
     def test_num_patches_matched_is_zero(self) -> None:
+        """best_avg does not populate num_patches_matched (always 0)."""
         pf = _make_patch_features(256, 384, seed=0)
         result = PatchMatcher.match_best_avg(pf, pf)
         assert result.num_patches_matched == 0  # best_avg doesn't compute this
@@ -251,13 +270,14 @@ class TestPatchMatcherMutualNN:
     """Tests for PatchMatcher.match_mutual_nn."""
 
     def test_same_features_all_mutual(self) -> None:
+        """Self-match yields >200 mutual NN pairs and score >0.8."""
         pf = _make_patch_features(256, 384, seed=42)
         result = PatchMatcher.match_mutual_nn(pf, pf)
-        # Identical patches → all should be mutual NN (if no ties)
         assert result.num_patches_matched > 200
         assert result.score > 0.8
 
     def test_random_features_fewer_mutual(self) -> None:
+        """Random feature pairs produce fewer mutual NN matches."""
         pf1 = _make_patch_features(256, 384, seed=1)
         pf2 = _make_patch_features(256, 384, seed=2)
         result = PatchMatcher.match_mutual_nn(pf1, pf2)
@@ -265,10 +285,10 @@ class TestPatchMatcherMutualNN:
         assert 0.0 <= result.score <= 1.0
 
     def test_top_k_sims_contains_mutual_pairs(self) -> None:
+        """Self-match mutual NN pairs have cosine similarity close to 1.0."""
         pf = _make_patch_features(256, 384, seed=42)
         result = PatchMatcher.match_mutual_nn(pf, pf, top_k=5)
         assert result.top_k_patch_sims.shape == (5,)
-        # Self-match: mutual pairs should have similarity ~1.0
         assert result.top_k_patch_sims[0] > 0.99
 
 
@@ -276,16 +296,19 @@ class TestPatchMatcherDispatch:
     """Tests for PatchMatcher.match dispatch."""
 
     def test_dispatch_best_avg(self) -> None:
+        """match() dispatches to best_avg when strategy='best_avg'."""
         pf = _make_patch_features(256, 384, seed=0)
         result = PatchMatcher.match(pf, pf, strategy="best_avg")
         assert result.num_patches_matched == 0  # best_avg
 
     def test_dispatch_mutual_nn(self) -> None:
+        """match() dispatches to mutual_nn when strategy='mutual_nn'."""
         pf = _make_patch_features(256, 384, seed=0)
         result = PatchMatcher.match(pf, pf, strategy="mutual_nn")
         assert result.num_patches_matched > 0
 
     def test_dispatch_unknown_raises(self) -> None:
+        """match() raises ValueError for unknown strategy."""
         pf = _make_patch_features(256, 384, seed=0)
         with pytest.raises(ValueError, match="Unknown strategy"):
             PatchMatcher.match(pf, pf, strategy="invalid")  # type: ignore[arg-type]
@@ -300,6 +323,7 @@ class TestCaching:
     """Tests for patch feature caching."""
 
     def test_cache_path_deterministic(self, tmp_path: Path) -> None:
+        """cache_path_for returns the same .npz path for the same image."""
         p = Path("/some/image.jpg")
         c1 = cache_path_for(p, tmp_path)
         c2 = cache_path_for(p, tmp_path)
@@ -307,6 +331,7 @@ class TestCaching:
         assert c1.suffix == ".npz"
 
     def test_cache_roundtrip(self, tmp_path: Path) -> None:
+        """Save then load preserves patches within fp16 tolerance."""
         pf = _make_patch_features(256, 384, seed=42)
         path = tmp_path / "test.npz"
         save_cached_patches(pf, path)
@@ -315,7 +340,17 @@ class TestCaching:
         np.testing.assert_allclose(loaded.patches, pf.patches, atol=5e-3)
         assert loaded.image_size == pf.image_size
 
+    def test_cache_roundtrip_preserves_normalization(self, tmp_path: Path) -> None:
+        """Loaded patches are L2-normalized after fp16 roundtrip."""
+        pf = _make_patch_features(256, 384, seed=42)
+        path = tmp_path / "test_norm.npz"
+        save_cached_patches(pf, path)
+        loaded = load_cached_patches(path)
+        norms = np.linalg.norm(loaded.patches, axis=1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-5)
+
     def test_save_uses_fp16(self, tmp_path: Path) -> None:
+        """Saved .npz stores patches in fp16 for storage efficiency."""
         pf = _make_patch_features(256, 384)
         path = tmp_path / "test.npz"
         save_cached_patches(pf, path)
@@ -325,6 +360,7 @@ class TestCaching:
     def test_extract_with_cache_uses_cache(
         self, patched_extractor: DINOv2PatchExtractor, tmp_path: Path
     ) -> None:
+        """Second extract_with_cache call loads from .npz cache."""
         if not _FIXTURE_PATHS[0].exists():
             pytest.skip("Fixture images not available")
         cache_dir = tmp_path / "cache"
@@ -361,6 +397,7 @@ class TestIntegrationDINOv2PatchExtractor:
     """Integration tests using real DINOv2 model weights."""
 
     def test_extract_fixture_shape(self, integration_extractor: DINOv2PatchExtractor) -> None:
+        """Real DINOv2 produces (256, 384) float32 patch features."""
         if not _FIXTURE_PATHS[0].exists():
             pytest.skip("Fixture images not available")
         pf = integration_extractor.extract(_FIXTURE_PATHS[0])
@@ -368,6 +405,7 @@ class TestIntegrationDINOv2PatchExtractor:
         assert pf.patches.dtype == np.float32
 
     def test_patches_are_l2_normalised(self, integration_extractor: DINOv2PatchExtractor) -> None:
+        """Real DINOv2 patch tokens are L2-normalized."""
         if not _FIXTURE_PATHS[0].exists():
             pytest.skip("Fixture images not available")
         pf = integration_extractor.extract(_FIXTURE_PATHS[0])
