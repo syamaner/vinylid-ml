@@ -239,7 +239,7 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor | Image.Image, int]]):
 
         _ensure_pil_limits()
         with Image.open(image_path) as pil_img:
-            img = pil_img.convert("RGB")
+            img = pil_img.convert("RGB").copy()
 
         label = self._album_to_label[str(row["album_id"])]
 

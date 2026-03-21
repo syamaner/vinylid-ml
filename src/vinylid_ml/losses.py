@@ -52,6 +52,12 @@ class ArcFaceLoss(nn.Module):
         scale: float = 64.0,
     ) -> None:
         super().__init__()
+        if embedding_dim < 1:
+            msg = f"embedding_dim must be >= 1, got {embedding_dim}."
+            raise ValueError(msg)
+        if num_classes < 1:
+            msg = f"num_classes must be >= 1, got {num_classes}."
+            raise ValueError(msg)
         if not 0 < margin < math.pi:
             msg = f"ArcFace margin must be in (0, pi), got {margin}."
             raise ValueError(msg)
@@ -131,6 +137,12 @@ class ProxyAnchorLoss(nn.Module):
         alpha: float = 32.0,
     ) -> None:
         super().__init__()
+        if embedding_dim < 1:
+            msg = f"embedding_dim must be >= 1, got {embedding_dim}."
+            raise ValueError(msg)
+        if num_classes < 1:
+            msg = f"num_classes must be >= 1, got {num_classes}."
+            raise ValueError(msg)
         if margin < 0:
             msg = f"ProxyAnchor margin must be >= 0, got {margin}."
             raise ValueError(msg)
