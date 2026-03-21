@@ -19,7 +19,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 from PIL import Image
-from torchvision import transforms
 
 __all__ = [
     "FineTuneModel",
@@ -143,8 +142,6 @@ class FineTuneModel(nn.Module):
             device = (
                 torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
             )
-        self._device = device
-
         if backbone_name not in BACKBONE_DIMS:
             raise ValueError(
                 f"Unknown backbone '{backbone_name}'. Supported: {sorted(BACKBONE_DIMS.keys())}"
@@ -222,8 +219,8 @@ class FineTuneModel(nn.Module):
 
     @property
     def device(self) -> torch.device:
-        """The device this model is on."""
-        return self._device
+        """The device this model is on, derived from model parameters."""
+        return next(self.parameters()).device
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Extract L2-normalised embeddings.
@@ -234,7 +231,9 @@ class FineTuneModel(nn.Module):
         Returns:
             L2-normalised embeddings of shape ``(B, projection_dim)``.
         """
-        images = images.to(self._device)
+        device = self.device
+        if images.device != device:
+            images = images.to(device, non_blocking=True)
 
         # Extract backbone features
         if self._backbone_name == "dinov2":
@@ -266,7 +265,11 @@ class MultiViewTransform:
         n_views: Number of augmented views to produce per image.
     """
 
-    def __init__(self, base_transform: transforms.Compose, n_views: int = 2) -> None:
+    def __init__(
+        self,
+        base_transform: Callable[[Image.Image], torch.Tensor],
+        n_views: int = 2,
+    ) -> None:
         if n_views < 1:
             msg = f"n_views must be >= 1, got {n_views}"
             raise ValueError(msg)
@@ -287,10 +290,7 @@ class MultiViewTransform:
         Returns:
             Tensor of shape ``(N_views, C, H, W)``.
         """
-        views = [
-            torch.as_tensor(self._base_transform(img))  # type: ignore[misc]
-            for _ in range(self._n_views)
-        ]
+        views = [self._base_transform(img) for _ in range(self._n_views)]
         return torch.stack(views)
 
 

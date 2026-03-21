@@ -162,13 +162,16 @@ class ProxyAnchorLoss(nn.Module):
         # Cosine similarity between embeddings and proxies: (B, C)
         cos = F.linear(F.normalize(embeddings), F.normalize(self.proxies))
 
-        # Positive/negative masks: (C, B)
-        p_one_hot = F.one_hot(labels, self._num_classes).float().T
+        # Positive/negative masks: (C, B). Match embeddings' dtype to avoid
+        # unintended upcasting in mixed-precision training.
+        p_one_hot = F.one_hot(labels, self._num_classes).to(
+            device=embeddings.device, dtype=embeddings.dtype
+        ).T
         n_one_hot = 1.0 - p_one_hot
 
         # Which proxies have at least one positive sample in this batch?
         with_pos = p_one_hot.sum(dim=1) > 0
-        num_with_pos = with_pos.sum().clamp(min=1).float()
+        num_with_pos = with_pos.sum().clamp(min=1).to(dtype=embeddings.dtype)
 
         # Positive term: softplus of margin-shifted similarities
         pos_exp = torch.exp(-self._alpha * (cos.T - self._margin))

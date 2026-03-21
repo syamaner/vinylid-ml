@@ -90,7 +90,7 @@ class TestMultiViewTransform:
                 return tensor + float(self.call_count)  # offset by call index
 
         counting = _CountingTransform()
-        mvt = MultiViewTransform(counting, n_views=2)  # type: ignore[arg-type]
+        mvt = MultiViewTransform(counting, n_views=2)
         result = mvt(sample_image)
         # Views should differ deterministically (offset by 1.0 vs 2.0)
         assert not torch.allclose(result[0], result[1])

@@ -135,7 +135,7 @@ class MultiViewAlbumDataset(Dataset[tuple[torch.Tensor, int]]):
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         img, label = self._inner[idx]
-        views: torch.Tensor = self._mvt(img)  # type: ignore[arg-type]
+        views: torch.Tensor = self._mvt(img)
         return views, label
 
     @property
