@@ -114,7 +114,7 @@ _BACKBONE_LOADERS: dict[str, _BackboneLoader] = {
 class FineTuneModel(nn.Module):
     """Pretrained backbone + projection head for metric learning.
 
-    Wraps a frozen or trainable backbone with a ``Linear → BN1d``
+    Wraps a frozen or trainable backbone with a ``Linear → LayerNorm``
     projection head.  The ``forward()`` method returns **L2-normalised**
     embeddings suitable for all three loss functions in ``losses.py``.
 
