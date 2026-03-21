@@ -5,15 +5,39 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, overload
 
 import numpy as np
 import pandas as pd
 import structlog
 import torch
 from PIL import Image
+from PIL import PngImagePlugin as _PngPlugin
 from torch.utils.data import Dataset
 from torchvision import transforms
+
+#: PIL decompression bomb pixel limit for large gallery scans (~17K px).
+#: Applied on first image load in __getitem__, not at import time.
+_MAX_IMAGE_PIXELS = 300_000_000
+#: PNG text chunk limit for images with large embedded XML metadata.
+_MAX_TEXT_CHUNK = 10 * 1024 * 1024  # 10 MB
+
+
+def _ensure_pil_limits() -> None:
+    """Ensure PIL safety limits are at least the desired thresholds.
+
+    Monotonic/idempotent: checks current globals and raises them if lower
+    than desired.  Avoids issues where another module (e.g. ``exif.py``)
+    might set a lower value after this module's first call.
+    """
+    current_pixels = getattr(Image, "MAX_IMAGE_PIXELS", None)
+    if current_pixels is None or current_pixels < _MAX_IMAGE_PIXELS:
+        Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
+
+    current_text = getattr(_PngPlugin, "MAX_TEXT_CHUNK", None)
+    if current_text is None or current_text < _MAX_TEXT_CHUNK:
+        _PngPlugin.MAX_TEXT_CHUNK = _MAX_TEXT_CHUNK
+
 
 __all__ = [
     "AlbumCoverDataset",
@@ -142,7 +166,7 @@ def get_train_transforms(input_size: int = 224) -> transforms.Compose:
     )
 
 
-class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
+class AlbumCoverDataset(Dataset[tuple[torch.Tensor | Image.Image, int]]):
     """PyTorch Dataset for album cover images.
 
     Loads images from the manifest, filters by split, and applies transforms.
@@ -151,17 +175,37 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
         manifest: DataFrame from load_manifest().
         splits: Split mapping from load_splits().
         split_name: Which split to use ("train", "val", or "test").
-        transform: Image transform to apply. Use get_eval_transforms() or
-            get_train_transforms().
+        transform: Image transform to apply, or ``None`` to return raw
+            PIL Images (useful for ``MultiViewTransform`` wrappers).
         gallery_root: Root directory to resolve relative image paths.
     """
 
+    @overload
     def __init__(
         self,
         manifest: pd.DataFrame,
         splits: dict[str, str],
         split_name: Literal["train", "val", "test"],
         transform: transforms.Compose,
+        gallery_root: Path,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        manifest: pd.DataFrame,
+        splits: dict[str, str],
+        split_name: Literal["train", "val", "test"],
+        transform: None,
+        gallery_root: Path,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        manifest: pd.DataFrame,
+        splits: dict[str, str],
+        split_name: Literal["train", "val", "test"],
+        transform: transforms.Compose | None,
         gallery_root: Path,
     ) -> None:
         # Filter manifest to images belonging to albums in the requested split
@@ -185,7 +229,7 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
     def __len__(self) -> int:
         return len(self._df)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor | Image.Image, int]:
         row = self._df.iloc[idx]
         image_path = Path(row["image_path"])
 
@@ -193,10 +237,16 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
         if not image_path.is_absolute():
             image_path = self._gallery_root / image_path
 
-        img = Image.open(image_path).convert("RGB")
-        tensor: torch.Tensor = self._transform(img)  # type: ignore[assignment]
+        _ensure_pil_limits()
+        with Image.open(image_path) as pil_img:
+            img = pil_img.convert("RGB").copy()
 
         label = self._album_to_label[str(row["album_id"])]
+
+        if self._transform is None:
+            return img, label
+
+        tensor: torch.Tensor = self._transform(img)  # type: ignore[assignment]
         return tensor, label
 
     @property
