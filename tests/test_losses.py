@@ -186,6 +186,16 @@ class TestProxyAnchorLoss:
         loss = loss_fn(emb, labels)
         assert torch.isfinite(loss)
 
+    def test_invalid_negative_margin(self) -> None:
+        """Negative margin raises ValueError."""
+        with pytest.raises(ValueError, match="margin must be"):
+            ProxyAnchorLoss(embedding_dim=32, num_classes=5, margin=-0.1)
+
+    def test_invalid_alpha_zero(self) -> None:
+        """alpha=0 raises ValueError."""
+        with pytest.raises(ValueError, match="alpha must be"):
+            ProxyAnchorLoss(embedding_dim=32, num_classes=5, alpha=0.0)
+
     def test_higher_alpha_increases_loss(self) -> None:
         """Higher alpha amplifies the exponential terms, increasing loss."""
         emb = _random_l2_normalized(8, 32)

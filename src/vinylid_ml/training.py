@@ -9,6 +9,7 @@ Provides:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -99,7 +100,9 @@ def _load_sscd_backbone(device: torch.device) -> nn.Module:
     return model
 
 
-_BACKBONE_LOADERS: dict[str, type[object] | object] = {
+_BackboneLoader = Callable[[torch.device], nn.Module]
+
+_BACKBONE_LOADERS: dict[str, _BackboneLoader] = {
     "dinov2": _load_dinov2_backbone,
     "mobilenet_v3_small": _load_mobilenet_backbone,
     "sscd": _load_sscd_backbone,
@@ -148,7 +151,7 @@ class FineTuneModel(nn.Module):
 
         # Load backbone
         loader = _BACKBONE_LOADERS[backbone_name]
-        self.backbone: nn.Module = loader(device)  # type: ignore[operator]
+        self.backbone: nn.Module = loader(device)
 
         # Projection head: Linear → BN1d
         self.projection = nn.Sequential(
@@ -181,15 +184,22 @@ class FineTuneModel(nn.Module):
         return self._projection_dim
 
     def freeze_backbone(self) -> None:
-        """Freeze all backbone parameters (stop gradient computation)."""
+        """Freeze all backbone parameters and set to eval mode.
+
+        Sets ``requires_grad=False`` on all backbone parameters and puts
+        the backbone into eval mode so BatchNorm running stats are not
+        updated during training.
+        """
         for param in self.backbone.parameters():
             param.requires_grad = False
+        self.backbone.eval()
         logger.info("backbone_frozen", backbone=self._backbone_name)
 
     def unfreeze_backbone(self) -> None:
-        """Unfreeze all backbone parameters (resume gradient computation)."""
+        """Unfreeze all backbone parameters and restore train mode."""
         for param in self.backbone.parameters():
             param.requires_grad = True
+        self.backbone.train()
         logger.info("backbone_unfrozen", backbone=self._backbone_name)
 
     def is_backbone_frozen(self) -> bool:
@@ -243,6 +253,9 @@ class MultiViewTransform:
     """
 
     def __init__(self, base_transform: transforms.Compose, n_views: int = 2) -> None:
+        if n_views < 1:
+            msg = f"n_views must be >= 1, got {n_views}"
+            raise ValueError(msg)
         self._base_transform = base_transform
         self._n_views = n_views
 

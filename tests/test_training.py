@@ -72,24 +72,44 @@ class TestMultiViewTransform:
         result = mvt(sample_image)
         assert result.shape == (2, 3, 32, 32)
 
-    def test_views_differ_with_random_transform(self, sample_image: Image.Image) -> None:
-        """Views produced from a random transform should differ."""
-        random_transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(32, scale=(0.5, 1.0)),
-                transforms.ColorJitter(brightness=0.5),
-                transforms.ToTensor(),
-            ]
-        )
-        mvt = MultiViewTransform(random_transform, n_views=2)
+    def test_views_differ_deterministically(self, sample_image: Image.Image) -> None:
+        """Each view receives an independent transform application."""
+
+        class _CountingTransform:
+            """Deterministic transform that encodes call order."""
+
+            def __init__(self) -> None:
+                self.call_count = 0
+                self._base = transforms.Compose(
+                    [transforms.Resize(32), transforms.CenterCrop(32), transforms.ToTensor()]
+                )
+
+            def __call__(self, img: Image.Image) -> torch.Tensor:
+                self.call_count += 1
+                tensor: torch.Tensor = self._base(img)  # type: ignore[assignment]
+                return tensor + float(self.call_count)  # offset by call index
+
+        counting = _CountingTransform()
+        mvt = MultiViewTransform(counting, n_views=2)  # type: ignore[arg-type]
         result = mvt(sample_image)
-        # Views should be different (extremely unlikely to be identical)
+        # Views should differ deterministically (offset by 1.0 vs 2.0)
         assert not torch.allclose(result[0], result[1])
+        assert counting.call_count == 2
 
     def test_n_views_property(self, simple_transform: transforms.Compose) -> None:
         """n_views property reflects constructor arg."""
         mvt = MultiViewTransform(simple_transform, n_views=5)
         assert mvt.n_views == 5
+
+    def test_invalid_n_views_zero(self, simple_transform: transforms.Compose) -> None:
+        """n_views=0 raises ValueError."""
+        with pytest.raises(ValueError, match="n_views must be"):
+            MultiViewTransform(simple_transform, n_views=0)
+
+    def test_invalid_n_views_negative(self, simple_transform: transforms.Compose) -> None:
+        """Negative n_views raises ValueError."""
+        with pytest.raises(ValueError, match="n_views must be"):
+            MultiViewTransform(simple_transform, n_views=-1)
 
 
 class TestTrainingConfig:

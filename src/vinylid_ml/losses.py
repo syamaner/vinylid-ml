@@ -131,6 +131,12 @@ class ProxyAnchorLoss(nn.Module):
         alpha: float = 32.0,
     ) -> None:
         super().__init__()
+        if margin < 0:
+            msg = f"ProxyAnchor margin must be >= 0, got {margin}."
+            raise ValueError(msg)
+        if alpha <= 0:
+            msg = f"ProxyAnchor alpha must be > 0, got {alpha}."
+            raise ValueError(msg)
         self._num_classes = num_classes
         self._margin = margin
         self._alpha = alpha

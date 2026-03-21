@@ -390,17 +390,12 @@ def main(argv: list[str] | None = None) -> None:
         train_album_ids = sorted({aid for aid, s in splits.items() if s == "train"})
         rng = random.Random(args.seed)
         subset_ids = set(rng.sample(train_album_ids, min(args.subset_albums, len(train_album_ids))))
-        # Remap only the selected albums to "train", rest to a dummy
-        subset_splits = {
-            aid: (s if aid in subset_ids or s != "train" else "excluded")
+        # Keep non-train splits as-is, keep only selected train albums as "train",
+        # and mark unselected train albums as "excluded".
+        splits_for_train = {
+            aid: (s if (s != "train" or aid in subset_ids) else "excluded")
             for aid, s in splits.items()
         }
-        # Temporarily rename selected back to "train"
-        subset_splits = {
-            aid: ("train" if aid in subset_ids and splits[aid] == "train" else s)
-            for aid, s in subset_splits.items()
-        }
-        splits_for_train = subset_splits
     else:
         splits_for_train = splits
 

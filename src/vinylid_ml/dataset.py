@@ -16,11 +16,23 @@ from PIL import PngImagePlugin as _PngPlugin
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-# Gallery contains legitimate large album art scans (up to ~17K px).
-# Raise Pillow's decompression bomb threshold to match exif.py.
-Image.MAX_IMAGE_PIXELS = 300_000_000  # exif.py uses 200M; 300M needed for ~17K px scans
-# Some PNGs embed large text chunks (e.g. XML metadata). Raise the limit.
-_PngPlugin.MAX_TEXT_CHUNK = 10 * 1024 * 1024  # 10 MB
+#: PIL decompression bomb pixel limit for large gallery scans (~17K px).
+#: Applied on first image load in __getitem__, not at import time.
+_MAX_IMAGE_PIXELS = 300_000_000
+#: PNG text chunk limit for images with large embedded XML metadata.
+_MAX_TEXT_CHUNK = 10 * 1024 * 1024  # 10 MB
+
+_pil_limits_applied = False
+
+
+def _ensure_pil_limits() -> None:
+    """Raise PIL safety limits once, on first use."""
+    global _pil_limits_applied  # noqa: PLW0603
+    if not _pil_limits_applied:
+        Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
+        _PngPlugin.MAX_TEXT_CHUNK = _MAX_TEXT_CHUNK
+        _pil_limits_applied = True
+
 
 __all__ = [
     "AlbumCoverDataset",
@@ -200,7 +212,10 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor | Image.Image, int]]):
         if not image_path.is_absolute():
             image_path = self._gallery_root / image_path
 
-        img = Image.open(image_path).convert("RGB")
+        _ensure_pil_limits()
+        with Image.open(image_path) as pil_img:
+            img = pil_img.convert("RGB")
+
         label = self._album_to_label[str(row["album_id"])]
 
         if self._transform is None:
