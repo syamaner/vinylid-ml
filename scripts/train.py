@@ -536,6 +536,14 @@ def main(argv: list[str] | None = None) -> None:
         val_metrics = _evaluate_val(model, val_dataset, batch_size=args.batch_size)
         epoch_time = time.monotonic() - epoch_start
 
+        # Log LR for each param group (backbone vs head after unfreezing)
+        lr_info: dict[str, object] = {}
+        if len(optimizer.param_groups) == 1:
+            lr_info["lr"] = round(optimizer.param_groups[0]["lr"], 8)
+        else:
+            lr_info["backbone_lr"] = round(optimizer.param_groups[0]["lr"], 8)
+            lr_info["head_lr"] = round(optimizer.param_groups[1]["lr"], 8)
+
         epoch_log: dict[str, object] = {
             "epoch": epoch,
             "train_loss": round(avg_loss, 6),
@@ -543,7 +551,7 @@ def main(argv: list[str] | None = None) -> None:
             "val_recall_at_5": round(val_metrics["recall_at_5"], 4),
             "val_map_at_5": round(val_metrics["map_at_5"], 4),
             "val_mrr": round(val_metrics["mrr"], 4),
-            "lr": round(optimizer.param_groups[0]["lr"], 8),
+            **lr_info,
             "epoch_time_s": round(epoch_time, 1),
         }
         training_log.append(epoch_log)

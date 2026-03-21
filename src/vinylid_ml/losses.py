@@ -226,10 +226,24 @@ class SupConLoss(nn.Module):
         Returns:
             Scalar loss tensor.
         """
+        if features.dim() not in (2, 3):
+            msg = (
+                "SupConLoss expects features with shape (N, D) or (B, N_views, D); "
+                f"got shape {tuple(features.shape)} (rank {features.dim()})."
+            )
+            raise ValueError(msg)
+
         if features.dim() == 3:
             batch_size, n_views, dim = features.shape
             features = features.reshape(batch_size * n_views, dim)
             labels = labels.repeat_interleave(n_views)
+
+        if labels.shape[0] != features.shape[0]:
+            msg = (
+                "SupConLoss expects labels length to match flattened features; "
+                f"got labels={labels.shape[0]} vs features={features.shape[0]}."
+            )
+            raise ValueError(msg)
 
         device = features.device
         n = features.shape[0]

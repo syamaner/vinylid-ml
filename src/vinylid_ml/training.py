@@ -153,10 +153,10 @@ class FineTuneModel(nn.Module):
         loader = _BACKBONE_LOADERS[backbone_name]
         self.backbone: nn.Module = loader(device)
 
-        # Projection head: Linear → BN1d
+        # Projection head: Linear → LayerNorm (batch-size independent)
         self.projection = nn.Sequential(
             nn.Linear(backbone_dim, projection_dim),
-            nn.BatchNorm1d(projection_dim),
+            nn.LayerNorm(projection_dim),
         ).to(device)
 
         if freeze_backbone:

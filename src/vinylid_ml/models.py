@@ -20,6 +20,7 @@ from torchvision import transforms
 
 __all__ = [
     "ALL_MODEL_IDS",
+    "SSCD_URLS",
     "DINOv2Embedder",
     "EmbeddingModel",
     "OpenCLIPEmbedder",
