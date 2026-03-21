@@ -312,8 +312,9 @@ class OpenCLIPEmbedder(EmbeddingModel):
         return embeddings.cpu().float()
 
 
-# SSCD TorchScript model URLs from Meta's CDN
-_SSCD_URLS: dict[str, str] = {
+#: SSCD TorchScript model URLs from Meta's CDN.
+#: Shared with ``training.py`` for backbone loading.
+SSCD_URLS: dict[str, str] = {
     "sscd_disc_mixup": (
         "https://dl.fbaipublicfiles.com/sscd-copy-detection/sscd_disc_mixup.torchscript.pt"
     ),
@@ -348,9 +349,9 @@ class SSCDEmbedder(EmbeddingModel):
     ) -> None:
         self._device = device or get_device()
 
-        if variant not in _SSCD_URLS:
+        if variant not in SSCD_URLS:
             raise ValueError(
-                f"Unknown SSCD variant '{variant}'. Available: {list(_SSCD_URLS.keys())}"
+                f"Unknown SSCD variant '{variant}'. Available: {list(SSCD_URLS.keys())}"
             )
 
         logger.info(
@@ -367,8 +368,8 @@ class SSCDEmbedder(EmbeddingModel):
         cached_path = cache_dir / filename
 
         if not cached_path.exists():
-            logger.info("downloading_sscd", url=_SSCD_URLS[variant])
-            torch.hub.download_url_to_file(_SSCD_URLS[variant], str(cached_path))
+            logger.info("downloading_sscd", url=SSCD_URLS[variant])
+            torch.hub.download_url_to_file(SSCD_URLS[variant], str(cached_path))
 
         jit_model = torch.jit.load(  # type: ignore[reportUnknownMemberType]
             str(cached_path), map_location=self._device

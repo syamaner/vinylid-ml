@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, overload
 
 import numpy as np
 import pandas as pd
@@ -27,7 +27,7 @@ _pil_limits_applied = False
 
 def _ensure_pil_limits() -> None:
     """Raise PIL safety limits once, on first use."""
-    global _pil_limits_applied  # noqa: PLW0603
+    global _pil_limits_applied
     if not _pil_limits_applied:
         Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
         _PngPlugin.MAX_TEXT_CHUNK = _MAX_TEXT_CHUNK
@@ -174,6 +174,26 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor | Image.Image, int]]):
             PIL Images (useful for ``MultiViewTransform`` wrappers).
         gallery_root: Root directory to resolve relative image paths.
     """
+
+    @overload
+    def __init__(
+        self,
+        manifest: pd.DataFrame,
+        splits: dict[str, str],
+        split_name: Literal["train", "val", "test"],
+        transform: transforms.Compose,
+        gallery_root: Path,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        manifest: pd.DataFrame,
+        splits: dict[str, str],
+        split_name: Literal["train", "val", "test"],
+        transform: None,
+        gallery_root: Path,
+    ) -> None: ...
 
     def __init__(
         self,

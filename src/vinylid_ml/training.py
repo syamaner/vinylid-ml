@@ -77,20 +77,23 @@ def _load_mobilenet_backbone(device: torch.device) -> nn.Module:
 def _load_sscd_backbone(device: torch.device) -> nn.Module:
     """Load SSCD ResNet50 backbone from Meta's CDN.
 
-    SSCD is distributed as a TorchScript model.  For fine-tuning we load it
-    as a scripted module — gradient flow works through ``torch.jit`` modules.
+    Reuses the URL and caching logic from :data:`vinylid_ml.models._SSCD_URLS`
+    to avoid duplication.  SSCD is distributed as a TorchScript model —
+    gradient flow works through ``torch.jit`` modules.
 
     Returns:
         SSCD TorchScript model producing 512-dim embeddings.
     """
+    from vinylid_ml.models import SSCD_URLS
+
+    variant = "sscd_disc_mixup"
     logger.info("loading_backbone", backbone="sscd", device=str(device))
     cache_dir = Path(torch.hub.get_dir()) / "checkpoints"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    filename = "sscd_disc_mixup.torchscript.pt"
-    cached_path = cache_dir / filename
+    cached_path = cache_dir / f"{variant}.torchscript.pt"
 
     if not cached_path.exists():
-        url = "https://dl.fbaipublicfiles.com/sscd-copy-detection/sscd_disc_mixup.torchscript.pt"
+        url = SSCD_URLS[variant]
         logger.info("downloading_sscd", url=url)
         torch.hub.download_url_to_file(url, str(cached_path))
 
@@ -205,6 +208,17 @@ class FineTuneModel(nn.Module):
     def is_backbone_frozen(self) -> bool:
         """Check whether the backbone parameters are frozen."""
         return not any(p.requires_grad for p in self.backbone.parameters())
+
+    def train(self, mode: bool = True) -> FineTuneModel:
+        """Override to keep backbone in eval mode while frozen.
+
+        When the backbone is frozen, calling ``model.train()`` keeps the
+        backbone in eval mode so BatchNorm running stats are not updated.
+        """
+        super().train(mode)
+        if mode and self.is_backbone_frozen():
+            self.backbone.eval()
+        return self
 
     @property
     def device(self) -> torch.device:
