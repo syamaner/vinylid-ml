@@ -12,8 +12,15 @@ import pandas as pd
 import structlog
 import torch
 from PIL import Image
+from PIL import PngImagePlugin as _PngPlugin
 from torch.utils.data import Dataset
 from torchvision import transforms
+
+# Gallery contains legitimate large album art scans (up to ~17K px).
+# Raise Pillow's decompression bomb threshold to match exif.py.
+Image.MAX_IMAGE_PIXELS = 300_000_000
+# Some PNGs embed large text chunks (e.g. XML metadata). Raise the limit.
+_PngPlugin.MAX_TEXT_CHUNK = 10 * 1024 * 1024  # 10 MB
 
 __all__ = [
     "AlbumCoverDataset",

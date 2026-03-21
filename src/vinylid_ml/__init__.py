@@ -63,6 +63,15 @@ if TYPE_CHECKING:
     from vinylid_ml.local_features import (
         SuperPointExtractor as SuperPointExtractor,
     )
+    from vinylid_ml.losses import (
+        ArcFaceLoss as ArcFaceLoss,
+    )
+    from vinylid_ml.losses import (
+        ProxyAnchorLoss as ProxyAnchorLoss,
+    )
+    from vinylid_ml.losses import (
+        SupConLoss as SupConLoss,
+    )
     from vinylid_ml.models import (
         ALL_MODEL_IDS as ALL_MODEL_IDS,
     )
@@ -90,24 +99,39 @@ if TYPE_CHECKING:
     from vinylid_ml.report import (
         generate_report as generate_report,
     )
+    from vinylid_ml.training import (
+        FineTuneModel as FineTuneModel,
+    )
+    from vinylid_ml.training import (
+        MultiViewTransform as MultiViewTransform,
+    )
+    from vinylid_ml.training import (
+        TrainingConfig as TrainingConfig,
+    )
 
 __all__ = [
     "ALL_MODEL_IDS",
     "FEATUREPRINT_MODEL_ID",
     "LOCAL_FEATURE_MODEL_ID",
+    "ArcFaceLoss",
     "CalibrationResult",
     "DINOv2Embedder",
     "EmbeddingModel",
     "EmbeddingResult",
+    "FineTuneModel",
     "GalleryImageDataset",
     "KeypointFeatures",
     "LightGlueMatcher",
     "LocalFeatureMatcher",
     "MatchResult",
+    "MultiViewTransform",
     "NNAmbiguityResult",
     "OpenCLIPEmbedder",
+    "ProxyAnchorLoss",
     "SSCDEmbedder",
+    "SupConLoss",
     "SuperPointExtractor",
+    "TrainingConfig",
     "VinylIDError",
     "compute_confidence_calibration",
     "compute_nn_ambiguity",
@@ -124,6 +148,12 @@ __all__ = [
 ]
 
 _LAZY_MODULES: dict[str, str] = {
+    "ArcFaceLoss": "vinylid_ml.losses",
+    "ProxyAnchorLoss": "vinylid_ml.losses",
+    "SupConLoss": "vinylid_ml.losses",
+    "FineTuneModel": "vinylid_ml.training",
+    "MultiViewTransform": "vinylid_ml.training",
+    "TrainingConfig": "vinylid_ml.training",
     "LOCAL_FEATURE_MODEL_ID": "vinylid_ml.local_features",
     "KeypointFeatures": "vinylid_ml.local_features",
     "LightGlueMatcher": "vinylid_ml.local_features",
