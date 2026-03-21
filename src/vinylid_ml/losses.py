@@ -52,6 +52,12 @@ class ArcFaceLoss(nn.Module):
         scale: float = 64.0,
     ) -> None:
         super().__init__()
+        if not 0 < margin < math.pi:
+            msg = f"ArcFace margin must be in (0, pi), got {margin}."
+            raise ValueError(msg)
+        if scale <= 0:
+            msg = f"ArcFace scale must be > 0, got {scale}."
+            raise ValueError(msg)
         self._num_classes = num_classes
         self._scale = scale
         self._margin = margin
@@ -189,6 +195,9 @@ class SupConLoss(nn.Module):
 
     def __init__(self, temperature: float = 0.07) -> None:
         super().__init__()
+        if temperature <= 0:
+            msg = f"SupConLoss temperature must be > 0, got {temperature}."
+            raise ValueError(msg)
         self._temperature = temperature
 
     def forward(self, features: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:

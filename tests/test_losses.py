@@ -5,6 +5,7 @@ Unit tests only — no model downloads or GPU required.
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from vinylid_ml.losses import ArcFaceLoss, ProxyAnchorLoss, SupConLoss
@@ -57,29 +58,29 @@ class TestArcFaceLoss:
         assert loss_fn.weight.grad is not None
 
     def test_margin_reduces_target_logit(self) -> None:
-        """With margin > 0, target-class logit should be lower than without margin."""
+        """Higher margin produces higher loss (target logit more suppressed)."""
         emb = _random_l2_normalized(4, 32)
         labels = torch.randint(0, 5, (4,))
 
-        loss_no_margin = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.0, scale=1.0)
-        loss_with_margin = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.5, scale=1.0)
+        loss_low_margin = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.1, scale=1.0)
+        loss_high_margin = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.5, scale=1.0)
 
         # Copy weights so they're identical
         with torch.no_grad():
-            loss_with_margin.weight.copy_(loss_no_margin.weight)
+            loss_high_margin.weight.copy_(loss_low_margin.weight)
 
-        l_no = loss_no_margin(emb, labels)
-        l_with = loss_with_margin(emb, labels)
-        # Margin increases the loss (target logit is suppressed)
-        assert l_with.item() > l_no.item()
+        l_low = loss_low_margin(emb, labels)
+        l_high = loss_high_margin(emb, labels)
+        # Higher margin increases the loss (target logit is more suppressed)
+        assert l_high.item() > l_low.item()
 
     def test_scale_amplifies_loss(self) -> None:
         """Higher scale should produce larger loss magnitude."""
         emb = _random_l2_normalized(4, 32)
         labels = torch.randint(0, 5, (4,))
 
-        loss_low = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.0, scale=1.0)
-        loss_high = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.0, scale=64.0)
+        loss_low = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.1, scale=1.0)
+        loss_high = ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.1, scale=64.0)
 
         with torch.no_grad():
             loss_high.weight.copy_(loss_low.weight)
@@ -105,6 +106,23 @@ class TestArcFaceLoss:
         labels = torch.tensor([2])
         loss = loss_fn(emb, labels)
         assert torch.isfinite(loss)
+
+    def test_invalid_margin_zero(self) -> None:
+        """margin=0 raises ValueError."""
+        with pytest.raises(ValueError, match="margin must be in"):
+            ArcFaceLoss(embedding_dim=32, num_classes=5, margin=0.0)
+
+    def test_invalid_margin_too_large(self) -> None:
+        """margin >= pi raises ValueError."""
+        import math
+
+        with pytest.raises(ValueError, match="margin must be in"):
+            ArcFaceLoss(embedding_dim=32, num_classes=5, margin=math.pi)
+
+    def test_invalid_scale_zero(self) -> None:
+        """scale=0 raises ValueError."""
+        with pytest.raises(ValueError, match="scale must be"):
+            ArcFaceLoss(embedding_dim=32, num_classes=5, scale=0.0)
 
 
 # ============================================================
@@ -270,3 +288,13 @@ class TestSupConLoss:
         labels = torch.tensor([0, 1, 2, 3])
         loss = loss_fn(features, labels)
         assert torch.isfinite(loss)
+
+    def test_invalid_temperature_zero(self) -> None:
+        """temperature=0 raises ValueError."""
+        with pytest.raises(ValueError, match="temperature must be"):
+            SupConLoss(temperature=0.0)
+
+    def test_invalid_temperature_negative(self) -> None:
+        """Negative temperature raises ValueError."""
+        with pytest.raises(ValueError, match="temperature must be"):
+            SupConLoss(temperature=-0.1)

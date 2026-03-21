@@ -18,7 +18,7 @@ from torchvision import transforms
 
 # Gallery contains legitimate large album art scans (up to ~17K px).
 # Raise Pillow's decompression bomb threshold to match exif.py.
-Image.MAX_IMAGE_PIXELS = 300_000_000
+Image.MAX_IMAGE_PIXELS = 300_000_000  # exif.py uses 200M; 300M needed for ~17K px scans
 # Some PNGs embed large text chunks (e.g. XML metadata). Raise the limit.
 _PngPlugin.MAX_TEXT_CHUNK = 10 * 1024 * 1024  # 10 MB
 
@@ -149,7 +149,7 @@ def get_train_transforms(input_size: int = 224) -> transforms.Compose:
     )
 
 
-class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
+class AlbumCoverDataset(Dataset[tuple[torch.Tensor | Image.Image, int]]):
     """PyTorch Dataset for album cover images.
 
     Loads images from the manifest, filters by split, and applies transforms.
@@ -158,8 +158,8 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
         manifest: DataFrame from load_manifest().
         splits: Split mapping from load_splits().
         split_name: Which split to use ("train", "val", or "test").
-        transform: Image transform to apply. Use get_eval_transforms() or
-            get_train_transforms().
+        transform: Image transform to apply, or ``None`` to return raw
+            PIL Images (useful for ``MultiViewTransform`` wrappers).
         gallery_root: Root directory to resolve relative image paths.
     """
 
@@ -168,7 +168,7 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
         manifest: pd.DataFrame,
         splits: dict[str, str],
         split_name: Literal["train", "val", "test"],
-        transform: transforms.Compose,
+        transform: transforms.Compose | None,
         gallery_root: Path,
     ) -> None:
         # Filter manifest to images belonging to albums in the requested split
@@ -192,7 +192,7 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
     def __len__(self) -> int:
         return len(self._df)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor | Image.Image, int]:
         row = self._df.iloc[idx]
         image_path = Path(row["image_path"])
 
@@ -201,9 +201,12 @@ class AlbumCoverDataset(Dataset[tuple[torch.Tensor, int]]):
             image_path = self._gallery_root / image_path
 
         img = Image.open(image_path).convert("RGB")
-        tensor: torch.Tensor = self._transform(img)  # type: ignore[assignment]
-
         label = self._album_to_label[str(row["album_id"])]
+
+        if self._transform is None:
+            return img, label
+
+        tensor: torch.Tensor = self._transform(img)  # type: ignore[assignment]
         return tensor, label
 
     @property

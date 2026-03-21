@@ -121,14 +121,11 @@ class MultiViewAlbumDataset(Dataset[tuple[torch.Tensor, int]]):
         multi_view_transform: MultiViewTransform,
         gallery_root: Path,
     ) -> None:
-        from torchvision import transforms
-
-        self._identity = transforms.Compose([])
         self._inner = AlbumCoverDataset(
             manifest=manifest,
             splits=splits,
             split_name=split_name,  # type: ignore[arg-type]
-            transform=self._identity,
+            transform=None,
             gallery_root=gallery_root,
         )
         self._mvt = multi_view_transform
@@ -137,11 +134,8 @@ class MultiViewAlbumDataset(Dataset[tuple[torch.Tensor, int]]):
         return len(self._inner)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-        # AlbumCoverDataset returns (tensor, label) but with identity transform
-        # the tensor is actually a PIL Image due to the Compose([]) identity
-        img_or_tensor, label = self._inner[idx]
-        # With identity transform, we get the PIL image
-        views: torch.Tensor = self._mvt(img_or_tensor)  # type: ignore[arg-type]
+        img, label = self._inner[idx]
+        views: torch.Tensor = self._mvt(img)  # type: ignore[arg-type]
         return views, label
 
     @property
@@ -252,7 +246,7 @@ def _train_one_epoch(
     num_batches = 0
 
     for batch_idx, (images, labels) in enumerate(loader):
-        labels = labels.to(model._device)  # type: ignore[reportPrivateUsage]
+        labels = labels.to(model.device)
 
         if is_supcon:
             # images: (B, N_views, C, H, W) → embed each view separately
@@ -320,7 +314,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
     parser.add_argument("--freeze-epochs", type=int, default=0, help="Epochs with backbone frozen.")
     parser.add_argument(
-        "--margin", type=float, default=0.5, help="ArcFace/ProxyAnchor margin (default: 0.5)."
+        "--margin",
+        type=float,
+        default=None,
+        help="Loss margin. Default: 0.5 for ArcFace, 0.1 for Proxy-Anchor (auto-selected).",
     )
     parser.add_argument("--scale", type=float, default=64.0, help="ArcFace scale (default: 64).")
     parser.add_argument(
@@ -355,6 +352,10 @@ def main(argv: list[str] | None = None) -> None:
     device = _get_device()
     backbone_dim = BACKBONE_DIMS[args.backbone]
     projection_dim = args.projection_dim or backbone_dim
+
+    # Auto-select loss-appropriate margin default if not explicitly set
+    if args.margin is None:
+        args.margin = 0.1 if args.loss == "proxy-anchor" else 0.5
 
     _seed_everything(args.seed)
 
@@ -469,7 +470,7 @@ def main(argv: list[str] | None = None) -> None:
         loss_fn = ProxyAnchorLoss(
             embedding_dim=projection_dim,
             num_classes=num_classes,
-            margin=0.1,
+            margin=args.margin,
             alpha=args.alpha,
         ).to(device)
     else:
@@ -520,10 +521,18 @@ def main(argv: list[str] | None = None) -> None:
         # Staged unfreezing
         if args.freeze_epochs > 0 and epoch == args.freeze_epochs:
             model.unfreeze_backbone()
-            # Reset LR for the newly unfrozen parameters
-            for pg in optimizer.param_groups:
-                pg["lr"] = args.lr * 0.1  # Lower LR for backbone
-            logger.info("unfreeze_at_epoch", epoch=epoch)
+            # Rebuild optimizer with separate param groups for backbone vs head
+            backbone_params = list(model.backbone.parameters())
+            head_params = list(model.projection.parameters()) + list(loss_fn.parameters())
+            optimizer = torch.optim.AdamW(
+                [
+                    {"params": backbone_params, "lr": args.lr * 0.1},
+                    {"params": head_params, "lr": args.lr},
+                ],
+                weight_decay=1e-4,
+            )
+            scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs - epoch)
+            logger.info("unfreeze_at_epoch", epoch=epoch, backbone_lr=args.lr * 0.1)
 
         avg_loss = _train_one_epoch(model, loss_fn, optimizer, train_loader, epoch, is_supcon)
         scheduler.step()

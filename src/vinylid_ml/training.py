@@ -196,6 +196,11 @@ class FineTuneModel(nn.Module):
         """Check whether the backbone parameters are frozen."""
         return not any(p.requires_grad for p in self.backbone.parameters())
 
+    @property
+    def device(self) -> torch.device:
+        """The device this model is on."""
+        return self._device
+
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Extract L2-normalised embeddings.
 
