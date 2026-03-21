@@ -344,7 +344,7 @@ class TrainingConfig:
     device: str = "cpu"
     git_sha: str | None = None
     manifest_hash: str | None = None
-    extra: dict[str, object] = field(default_factory=lambda: dict[str, object]())
+    extra: dict[str, object] = field(default_factory=lambda: {})
 
     def to_dict(self) -> dict[str, object]:
         """Convert to a JSON-serialisable dictionary."""
