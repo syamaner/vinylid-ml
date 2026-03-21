@@ -77,7 +77,7 @@ def _load_mobilenet_backbone(device: torch.device) -> nn.Module:
 def _load_sscd_backbone(device: torch.device) -> nn.Module:
     """Load SSCD ResNet50 backbone from Meta's CDN.
 
-    Reuses the URL and caching logic from :data:`vinylid_ml.models._SSCD_URLS`
+    Reuses the URL and caching logic from :data:`vinylid_ml.models.SSCD_URLS`
     to avoid duplication.  SSCD is distributed as a TorchScript model —
     gradient flow works through ``torch.jit`` modules.
 

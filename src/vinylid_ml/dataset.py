@@ -22,16 +22,21 @@ _MAX_IMAGE_PIXELS = 300_000_000
 #: PNG text chunk limit for images with large embedded XML metadata.
 _MAX_TEXT_CHUNK = 10 * 1024 * 1024  # 10 MB
 
-_pil_limits_applied = False
-
 
 def _ensure_pil_limits() -> None:
-    """Raise PIL safety limits once, on first use."""
-    global _pil_limits_applied
-    if not _pil_limits_applied:
+    """Ensure PIL safety limits are at least the desired thresholds.
+
+    Monotonic/idempotent: checks current globals and raises them if lower
+    than desired.  Avoids issues where another module (e.g. ``exif.py``)
+    might set a lower value after this module's first call.
+    """
+    current_pixels = getattr(Image, "MAX_IMAGE_PIXELS", None)
+    if current_pixels is None or current_pixels < _MAX_IMAGE_PIXELS:
         Image.MAX_IMAGE_PIXELS = _MAX_IMAGE_PIXELS
+
+    current_text = getattr(_PngPlugin, "MAX_TEXT_CHUNK", None)
+    if current_text is None or current_text < _MAX_TEXT_CHUNK:
         _PngPlugin.MAX_TEXT_CHUNK = _MAX_TEXT_CHUNK
-        _pil_limits_applied = True
 
 
 __all__ = [
