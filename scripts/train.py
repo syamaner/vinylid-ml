@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import subprocess
 import sys
 import time
@@ -327,8 +328,25 @@ def main(argv: list[str] | None = None) -> None:
         "--temperature", type=float, default=0.07, help="SupCon temperature (default: 0.07)."
     )
     parser.add_argument("--output-dir", type=Path, default=None, help="Results directory.")
+    parser.add_argument(
+        "--name",
+        type=str,
+        default=None,
+        help="Model run name (default: auto-generated from backbone/loss).",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=None,
+        help="Early stopping patience (epochs without val R@1 improvement). Disabled by default.",
+    )
 
     args = parser.parse_args(argv)
+
+    # Validate patience
+    if args.patience is not None and args.patience < 1:
+        logger.error("invalid_patience", value=args.patience, msg="--patience must be >= 1")
+        sys.exit(1)
 
     # ── Config ──────────────────────────────────────────────────────
     config_path: Path = args.config.resolve()
@@ -363,10 +381,21 @@ def main(argv: list[str] | None = None) -> None:
     git_sha = _get_git_sha()
 
     # Model name for results directory
-    loss_short = {"arcface": "af", "proxy-anchor": "pa", "supcon": "sc"}[args.loss]
-    model_name = f"strategy-{args.backbone}-{loss_short}"
-    if args.subset_albums:
-        model_name += f"-{args.subset_albums}alb"
+    if args.name:
+        # Reject path traversal and unsafe characters
+        if not re.match(r"^[A-Za-z0-9._-]+$", args.name):
+            logger.error(
+                "invalid_name",
+                value=args.name,
+                msg="--name must only contain [A-Za-z0-9._-]",
+            )
+            sys.exit(1)
+        model_name = args.name
+    else:
+        loss_short = {"arcface": "af", "proxy-anchor": "pa", "supcon": "sc"}[args.loss]
+        model_name = f"strategy-{args.backbone}-{loss_short}"
+        if args.subset_albums:
+            model_name += f"-{args.subset_albums}alb"
 
     run_dir = results_dir / model_name / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -498,6 +527,7 @@ def main(argv: list[str] | None = None) -> None:
         device=str(device),
         git_sha=git_sha,
         manifest_hash=_manifest_hash(manifest_path),
+        patience=args.patience,
         extra={
             "torch_version": torch.__version__,
             "model_name": model_name,
@@ -507,7 +537,10 @@ def main(argv: list[str] | None = None) -> None:
     train_config.save(run_dir / "config.json")
 
     # ── Training loop ───────────────────────────────────────────────
-    best_val_r1 = 0.0
+    best_val_r1 = -1.0  # ensures first epoch always saves a checkpoint
+    best_epoch = 0
+    no_improve_count = 0
+    early_stopped = False
     training_log: list[dict[str, object]] = []
 
     for epoch in range(args.epochs):
@@ -561,6 +594,8 @@ def main(argv: list[str] | None = None) -> None:
         # Save best checkpoint
         if val_metrics["recall_at_1"] > best_val_r1:
             best_val_r1 = val_metrics["recall_at_1"]
+            best_epoch = epoch
+            no_improve_count = 0
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -570,10 +605,28 @@ def main(argv: list[str] | None = None) -> None:
             }
             torch.save(checkpoint, run_dir / "best_checkpoint.pt")
             logger.info("checkpoint_saved", epoch=epoch, val_r1=round(best_val_r1, 4))
+        else:
+            no_improve_count += 1
+
+        # Early stopping
+        if args.patience is not None and no_improve_count >= args.patience:
+            logger.info(
+                "early_stopping",
+                epoch=epoch,
+                best_epoch=best_epoch,
+                best_val_r1=round(best_val_r1, 4),
+                patience=args.patience,
+            )
+            early_stopped = True
+            break
 
     # ── Save results ────────────────────────────────────────────────
+    total_epochs = len(training_log)
     final_metrics = {
         "best_val_recall_at_1": round(best_val_r1, 4),
+        "best_epoch": best_epoch,
+        "total_epochs_trained": total_epochs,
+        "early_stopped": early_stopped,
         "final_epoch": training_log[-1] if training_log else {},
         "training_log": training_log,
     }
