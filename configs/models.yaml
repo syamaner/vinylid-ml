@@ -64,26 +64,26 @@ models:
     input_sizes: [224]
     normalization: imagenet
 
-  B2-dinov2-arcface:
-    name: "DINOv2 ViT-S/14 + ArcFace"
+  B2-dinov2-supcon:
+    name: "DINOv2 ViT-S/14 + SupCon"
     category: fine-tuned
     backbone: dinov2_vits14
+    loss: supcon
+    temperature: 0.07
     embedding_dim: 384
-    arcface_margin: 0.5
-    arcface_scale: 64
     freeze_epochs: 5
     input_sizes: [224]
     normalization: imagenet
 
-  B3-sscd-arcface:
-    name: "SSCD ResNet50 + ArcFace"
+  B3-sscd-supcon:
+    name: "SSCD ResNet50 + SupCon"
     category: fine-tuned
     backbone: sscd_disc_mixup
+    loss: supcon
+    temperature: 0.07
     embedding_dim: 512
-    arcface_margin: 0.5
-    arcface_scale: 64
     freeze_epochs: 5
-    conditional: true  # only if A4 shows promise
+    conditional: true  # only if B2 shows promising improvement
     input_sizes: [224]
     normalization: imagenet
 
