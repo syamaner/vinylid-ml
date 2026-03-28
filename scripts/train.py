@@ -97,6 +97,72 @@ def _get_device() -> torch.device:
     return torch.device("cpu")
 
 
+def _build_llrd_param_groups(
+    backbone: torch.nn.Module,
+    backbone_name: str,
+    backbone_lr: float,
+    decay: float,
+) -> list[dict[str, object]]:
+    """Build parameter groups with layer-wise LR decay for ViT backbones.
+
+    For DINOv2 ViT-S/14 (12 blocks), outer blocks (near output) get the
+    highest backbone LR; inner blocks are multiplied by ``decay`` per step
+    inward. Patch/pos embeddings receive the lowest LR (``decay^num_blocks``).
+    The final LayerNorm receives the full ``backbone_lr``.
+
+    Non-DINOv2 backbones fall back to a single uniform LR param group.
+
+    Args:
+        backbone: The backbone ``nn.Module``.
+        backbone_name: Backbone identifier string (e.g. ``"dinov2"``).
+        backbone_lr: Base backbone learning rate (post-multiplier).
+        decay: LLRD decay factor per block depth (e.g. 0.9).
+
+    Returns:
+        List of ``{"params": [...], "lr": float}`` dicts for AdamW.
+    """
+    if backbone_name != "dinov2":
+        trainable = [p for p in backbone.parameters() if p.requires_grad]
+        return [{"params": trainable, "lr": backbone_lr}]
+
+    # Discover number of transformer blocks
+    block_indices = {
+        int(name.split(".")[1])
+        for name, _ in backbone.named_parameters()
+        if name.startswith("blocks.")
+    }
+    num_blocks = max(block_indices) + 1 if block_indices else 12
+
+    # Map each trainable param to its target LR
+    param_lr: dict[int, float] = {}
+    for name, param in backbone.named_parameters():
+        if not param.requires_grad:
+            continue
+        pid = id(param)
+        if pid in param_lr:
+            continue
+        if name.startswith("blocks."):
+            block_idx = int(name.split(".")[1])
+            param_lr[pid] = backbone_lr * (decay ** (num_blocks - 1 - block_idx))
+        elif name.startswith("norm"):
+            param_lr[pid] = backbone_lr
+        else:
+            # patch_embed, pos_embed, cls_token, register_tokens → lowest LR
+            param_lr[pid] = backbone_lr * (decay**num_blocks)
+
+    # Group params by LR value
+    lr_to_params: dict[float, list[torch.nn.Parameter]] = {}
+    for _name, param in backbone.named_parameters():
+        if id(param) in param_lr:
+            lr_val = param_lr[id(param)]
+            lr_to_params.setdefault(lr_val, []).append(param)
+
+    groups: list[dict[str, object]] = [
+        {"params": params, "lr": lr_val} for lr_val, params in sorted(lr_to_params.items())
+    ]
+    return groups if groups else [{"params": list(backbone.parameters()), "lr": backbone_lr}]
+
+
 # ── Multi-view Dataset Wrapper ──────────────────────────────────────────
 
 
@@ -340,12 +406,45 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Early stopping patience (epochs without val R@1 improvement). Disabled by default.",
     )
+    parser.add_argument(
+        "--backbone-lr-mult",
+        type=float,
+        default=0.1,
+        help="Backbone LR multiplier at unfreeze (backbone_lr = lr * mult). Default 0.1; use 0.01 for ViT.",
+    )
+    parser.add_argument(
+        "--llrd-decay",
+        type=float,
+        default=None,
+        help="Layer-wise LR decay for ViT backbones (e.g. 0.9). DINOv2 only.",
+    )
+    parser.add_argument(
+        "--unfreeze-blocks",
+        type=int,
+        default=None,
+        help="Unfreeze only the last N transformer blocks. None = unfreeze all. DINOv2 only.",
+    )
 
     args = parser.parse_args(argv)
 
     # Validate patience
     if args.patience is not None and args.patience < 1:
         logger.error("invalid_patience", value=args.patience, msg="--patience must be >= 1")
+        sys.exit(1)
+    if args.backbone_lr_mult <= 0:
+        logger.error("invalid_backbone_lr_mult", value=args.backbone_lr_mult)
+        sys.exit(1)
+    if args.llrd_decay is not None and not (0.0 < args.llrd_decay < 1.0):
+        logger.error(
+            "invalid_llrd_decay", value=args.llrd_decay, msg="--llrd-decay must be in (0, 1)"
+        )
+        sys.exit(1)
+    if args.unfreeze_blocks is not None and args.unfreeze_blocks < 1:
+        logger.error(
+            "invalid_unfreeze_blocks",
+            value=args.unfreeze_blocks,
+            msg="--unfreeze-blocks must be >= 1",
+        )
         sys.exit(1)
 
     # ── Config ──────────────────────────────────────────────────────
@@ -528,6 +627,9 @@ def main(argv: list[str] | None = None) -> None:
         git_sha=git_sha,
         manifest_hash=_manifest_hash(manifest_path),
         patience=args.patience,
+        backbone_lr_mult=args.backbone_lr_mult,
+        llrd_decay=args.llrd_decay,
+        unfreeze_blocks=args.unfreeze_blocks,
         extra={
             "torch_version": torch.__version__,
             "model_name": model_name,
@@ -548,19 +650,34 @@ def main(argv: list[str] | None = None) -> None:
 
         # Staged unfreezing
         if args.freeze_epochs > 0 and epoch == args.freeze_epochs:
-            model.unfreeze_backbone()
-            # Rebuild optimizer with separate param groups for backbone vs head
-            backbone_params = list(model.backbone.parameters())
+            backbone_lr = args.lr * args.backbone_lr_mult
+            if args.unfreeze_blocks is not None:
+                model.partial_unfreeze_backbone(args.unfreeze_blocks)
+            else:
+                model.unfreeze_backbone()
+
+            # Build backbone param groups (LLRD or uniform)
+            if args.llrd_decay is not None:
+                backbone_groups = _build_llrd_param_groups(
+                    model.backbone, args.backbone, backbone_lr, args.llrd_decay
+                )
+            else:
+                trainable_backbone = [p for p in model.backbone.parameters() if p.requires_grad]
+                backbone_groups = [{"params": trainable_backbone, "lr": backbone_lr}]
+
             head_params = list(model.projection.parameters()) + list(loss_fn.parameters())
             optimizer = torch.optim.AdamW(
-                [
-                    {"params": backbone_params, "lr": args.lr * 0.1},
-                    {"params": head_params, "lr": args.lr},
-                ],
+                [*backbone_groups, {"params": head_params, "lr": args.lr}],
                 weight_decay=1e-4,
             )
             scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs - epoch)
-            logger.info("unfreeze_at_epoch", epoch=epoch, backbone_lr=args.lr * 0.1)
+            logger.info(
+                "unfreeze_at_epoch",
+                epoch=epoch,
+                backbone_lr=backbone_lr,
+                llrd=args.llrd_decay is not None,
+                num_param_groups=len(optimizer.param_groups),
+            )
 
         avg_loss = _train_one_epoch(model, loss_fn, optimizer, train_loader, epoch, is_supcon)
         scheduler.step()
@@ -569,13 +686,21 @@ def main(argv: list[str] | None = None) -> None:
         val_metrics = _evaluate_val(model, val_dataset, batch_size=args.batch_size)
         epoch_time = time.monotonic() - epoch_start
 
-        # Log LR for each param group (backbone vs head after unfreezing)
+        # Log LR — single group (frozen), two groups (uniform unfreeze), or
+        # many groups (LLRD): report min/max backbone LR + head LR.
         lr_info: dict[str, object] = {}
-        if len(optimizer.param_groups) == 1:
+        n_groups = len(optimizer.param_groups)
+        if n_groups == 1:
             lr_info["lr"] = round(optimizer.param_groups[0]["lr"], 8)
-        else:
+        elif n_groups == 2:
             lr_info["backbone_lr"] = round(optimizer.param_groups[0]["lr"], 8)
             lr_info["head_lr"] = round(optimizer.param_groups[1]["lr"], 8)
+        else:
+            # LLRD: backbone groups + 1 head group
+            backbone_lrs = [g["lr"] for g in optimizer.param_groups[:-1]]
+            lr_info["backbone_lr_min"] = round(min(backbone_lrs), 10)
+            lr_info["backbone_lr_max"] = round(max(backbone_lrs), 10)
+            lr_info["head_lr"] = round(optimizer.param_groups[-1]["lr"], 8)
 
         epoch_log: dict[str, object] = {
             "epoch": epoch,
