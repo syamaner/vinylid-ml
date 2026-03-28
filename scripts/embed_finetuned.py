@@ -274,7 +274,7 @@ def main(argv: list[str] | None = None) -> None:
     # Load data
     manifest = load_manifest(manifest_path)
     splits = load_splits(splits_path)
-    transform = get_eval_transforms()
+    transform = get_eval_transforms(input_size=train_config.input_size)
 
     split_names = ["train", "val", "test"] if args.split == "all" else [args.split]
 
@@ -321,7 +321,10 @@ def main(argv: list[str] | None = None) -> None:
 
     print(f"\nEmbeddings saved: {save_path}")
     print(f"  {len(image_paths)} images, {projection_dim}-dim")
-    print(f"  Run: python scripts/evaluate.py --config {args.config} --model {args.model_id}")
+    eval_cmd = f"python scripts/evaluate.py --config {args.config} --model {args.model_id}"
+    if args.output_dir is not None:
+        eval_cmd += f" --embeddings-dir {output_dir}"
+    print(f"  Run: {eval_cmd}")
 
 
 if __name__ == "__main__":

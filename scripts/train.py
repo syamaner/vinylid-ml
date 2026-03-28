@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import subprocess
 import sys
 import time
@@ -342,6 +343,11 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
+    # Validate patience
+    if args.patience is not None and args.patience < 1:
+        logger.error("invalid_patience", value=args.patience, msg="--patience must be >= 1")
+        sys.exit(1)
+
     # ── Config ──────────────────────────────────────────────────────
     config_path: Path = args.config.resolve()
     if not config_path.exists():
@@ -376,6 +382,14 @@ def main(argv: list[str] | None = None) -> None:
 
     # Model name for results directory
     if args.name:
+        # Reject path traversal and unsafe characters
+        if not re.match(r"^[A-Za-z0-9._-]+$", args.name):
+            logger.error(
+                "invalid_name",
+                value=args.name,
+                msg="--name must only contain [A-Za-z0-9._-]",
+            )
+            sys.exit(1)
         model_name = args.name
     else:
         loss_short = {"arcface": "af", "proxy-anchor": "pa", "supcon": "sc"}[args.loss]
@@ -523,9 +537,10 @@ def main(argv: list[str] | None = None) -> None:
     train_config.save(run_dir / "config.json")
 
     # ── Training loop ───────────────────────────────────────────────
-    best_val_r1 = 0.0
+    best_val_r1 = -1.0  # ensures first epoch always saves a checkpoint
     best_epoch = 0
     no_improve_count = 0
+    early_stopped = False
     training_log: list[dict[str, object]] = []
 
     for epoch in range(args.epochs):
@@ -602,6 +617,7 @@ def main(argv: list[str] | None = None) -> None:
                 best_val_r1=round(best_val_r1, 4),
                 patience=args.patience,
             )
+            early_stopped = True
             break
 
     # ── Save results ────────────────────────────────────────────────
@@ -610,7 +626,7 @@ def main(argv: list[str] | None = None) -> None:
         "best_val_recall_at_1": round(best_val_r1, 4),
         "best_epoch": best_epoch,
         "total_epochs_trained": total_epochs,
-        "early_stopped": total_epochs < args.epochs,
+        "early_stopped": early_stopped,
         "final_epoch": training_log[-1] if training_log else {},
         "training_log": training_log,
     }
