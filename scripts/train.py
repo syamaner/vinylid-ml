@@ -327,6 +327,18 @@ def main(argv: list[str] | None = None) -> None:
         "--temperature", type=float, default=0.07, help="SupCon temperature (default: 0.07)."
     )
     parser.add_argument("--output-dir", type=Path, default=None, help="Results directory.")
+    parser.add_argument(
+        "--name",
+        type=str,
+        default=None,
+        help="Model run name (default: auto-generated from backbone/loss).",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=None,
+        help="Early stopping patience (epochs without val R@1 improvement). Disabled by default.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -363,10 +375,13 @@ def main(argv: list[str] | None = None) -> None:
     git_sha = _get_git_sha()
 
     # Model name for results directory
-    loss_short = {"arcface": "af", "proxy-anchor": "pa", "supcon": "sc"}[args.loss]
-    model_name = f"strategy-{args.backbone}-{loss_short}"
-    if args.subset_albums:
-        model_name += f"-{args.subset_albums}alb"
+    if args.name:
+        model_name = args.name
+    else:
+        loss_short = {"arcface": "af", "proxy-anchor": "pa", "supcon": "sc"}[args.loss]
+        model_name = f"strategy-{args.backbone}-{loss_short}"
+        if args.subset_albums:
+            model_name += f"-{args.subset_albums}alb"
 
     run_dir = results_dir / model_name / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -502,12 +517,14 @@ def main(argv: list[str] | None = None) -> None:
             "torch_version": torch.__version__,
             "model_name": model_name,
             "timestamp": timestamp,
+            "patience": args.patience,
         },
     )
     train_config.save(run_dir / "config.json")
 
     # ── Training loop ───────────────────────────────────────────────
     best_val_r1 = 0.0
+    best_epoch = -1
     training_log: list[dict[str, object]] = []
 
     for epoch in range(args.epochs):
@@ -561,6 +578,7 @@ def main(argv: list[str] | None = None) -> None:
         # Save best checkpoint
         if val_metrics["recall_at_1"] > best_val_r1:
             best_val_r1 = val_metrics["recall_at_1"]
+            best_epoch = epoch
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -571,9 +589,24 @@ def main(argv: list[str] | None = None) -> None:
             torch.save(checkpoint, run_dir / "best_checkpoint.pt")
             logger.info("checkpoint_saved", epoch=epoch, val_r1=round(best_val_r1, 4))
 
+        # Early stopping
+        if args.patience is not None and (epoch - best_epoch) >= args.patience:
+            logger.info(
+                "early_stopping",
+                epoch=epoch,
+                best_epoch=best_epoch,
+                best_val_r1=round(best_val_r1, 4),
+                patience=args.patience,
+            )
+            break
+
     # ── Save results ────────────────────────────────────────────────
+    total_epochs = len(training_log)
     final_metrics = {
         "best_val_recall_at_1": round(best_val_r1, 4),
+        "best_epoch": best_epoch,
+        "total_epochs_trained": total_epochs,
+        "early_stopped": total_epochs < args.epochs,
         "final_epoch": training_log[-1] if training_log else {},
         "training_log": training_log,
     }
