@@ -312,6 +312,8 @@ class TrainingConfig:
         seed: Random seed for reproducibility.
         subset_albums: If set, train on only this many albums.
         freeze_epochs: Number of initial epochs with backbone frozen.
+        patience: Early stopping patience (epochs without val R@1 improvement).
+            ``None`` disables early stopping.
         margin: ArcFace/ProxyAnchor margin parameter.
         scale: ArcFace scale parameter.
         alpha: ProxyAnchor alpha parameter.
@@ -335,6 +337,7 @@ class TrainingConfig:
     seed: int = 42
     subset_albums: int | None = None
     freeze_epochs: int = 0
+    patience: int | None = None
     margin: float = 0.5
     scale: float = 64.0
     alpha: float = 32.0

@@ -258,6 +258,9 @@ def main(argv: list[str] | None = None) -> None:
         freeze_backbone=False,
     )
 
+    # weights_only=False is required: checkpoints include optimizer_state_dict and
+    # loss_state_dict, which contain arbitrary Python objects that weights_only=True
+    # cannot deserialise. These checkpoints are always produced by our own train.py.
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()

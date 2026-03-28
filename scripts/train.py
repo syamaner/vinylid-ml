@@ -513,18 +513,19 @@ def main(argv: list[str] | None = None) -> None:
         device=str(device),
         git_sha=git_sha,
         manifest_hash=_manifest_hash(manifest_path),
+        patience=args.patience,
         extra={
             "torch_version": torch.__version__,
             "model_name": model_name,
             "timestamp": timestamp,
-            "patience": args.patience,
         },
     )
     train_config.save(run_dir / "config.json")
 
     # ── Training loop ───────────────────────────────────────────────
     best_val_r1 = 0.0
-    best_epoch = -1
+    best_epoch = 0
+    no_improve_count = 0
     training_log: list[dict[str, object]] = []
 
     for epoch in range(args.epochs):
@@ -579,6 +580,7 @@ def main(argv: list[str] | None = None) -> None:
         if val_metrics["recall_at_1"] > best_val_r1:
             best_val_r1 = val_metrics["recall_at_1"]
             best_epoch = epoch
+            no_improve_count = 0
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -588,9 +590,11 @@ def main(argv: list[str] | None = None) -> None:
             }
             torch.save(checkpoint, run_dir / "best_checkpoint.pt")
             logger.info("checkpoint_saved", epoch=epoch, val_r1=round(best_val_r1, 4))
+        else:
+            no_improve_count += 1
 
         # Early stopping
-        if args.patience is not None and (epoch - best_epoch) >= args.patience:
+        if args.patience is not None and no_improve_count >= args.patience:
             logger.info(
                 "early_stopping",
                 epoch=epoch,
