@@ -212,7 +212,14 @@ class FineTuneModel(nn.Module):
         Args:
             n_blocks: Number of transformer blocks to unfreeze (counted from
                 the output end, i.e. the highest-indexed blocks).
+                Must be >= 1.
+
+        Raises:
+            ValueError: If ``n_blocks`` is less than 1.
         """
+        if n_blocks < 1:
+            msg = f"n_blocks must be >= 1, got {n_blocks}"
+            raise ValueError(msg)
         if self._backbone_name != "dinov2":
             logger.warning(
                 "partial_unfreeze_not_supported",

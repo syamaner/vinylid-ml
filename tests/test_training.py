@@ -262,11 +262,11 @@ class TestBuildLLRDParamGroups:
         assert max(lrs) == pytest.approx(1e-6)  # outermost block or norm
 
     def test_lr_monotonically_increases_with_depth(self) -> None:
-        """Group LRs are monotonically increasing (inner → outer)."""
+        """Group LRs from _build_llrd_param_groups are in ascending order."""
         backbone = _MockViTBackbone(num_blocks=4)
         groups = _build_llrd_param_groups(backbone, "dinov2", backbone_lr=1e-6, decay=0.9)
-        lrs = sorted(g["lr"] for g in groups)
-        assert lrs == sorted(lrs)  # already ascending
+        lrs = [g["lr"] for g in groups]  # original order returned by the function
+        assert lrs == sorted(lrs), f"Expected ascending LRs, got {lrs}"
 
     def test_no_frozen_params_in_groups(self) -> None:
         """No parameter with requires_grad=False appears in any group."""
@@ -347,6 +347,18 @@ class TestPartialUnfreezeBackbone:
         model.partial_unfreeze_backbone(n_blocks=2)
         # Full unfreeze: all backbone params trainable
         assert all(p.requires_grad for p in model.backbone.parameters())
+
+    def test_n_blocks_zero_raises(self) -> None:
+        """n_blocks=0 raises ValueError."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        with pytest.raises(ValueError, match="n_blocks must be >= 1"):
+            model.partial_unfreeze_backbone(n_blocks=0)
+
+    def test_n_blocks_negative_raises(self) -> None:
+        """Negative n_blocks raises ValueError."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        with pytest.raises(ValueError, match="n_blocks must be >= 1"):
+            model.partial_unfreeze_backbone(n_blocks=-1)
 
 
 class TestFineTuneModelProperties:
