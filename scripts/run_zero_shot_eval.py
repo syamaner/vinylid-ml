@@ -155,11 +155,16 @@ def _run_embed_gallery(
     cmd = [
         sys.executable,
         str(_SCRIPTS_DIR / "embed_gallery.py"),
-        "--config", str(config),
-        "--model", model_id,
-        "--split", split,
-        "--batch-size", str(batch_size),
-        "--output-dir", str(output_dir),
+        "--config",
+        str(config),
+        "--model",
+        model_id,
+        "--split",
+        split,
+        "--batch-size",
+        str(batch_size),
+        "--output-dir",
+        str(output_dir),
     ]
     logger.info("running_embed_gallery", model_id=model_id, split=split)
     subprocess.run(cmd, check=True)
@@ -187,11 +192,16 @@ def _run_evaluate(
     cmd = [
         sys.executable,
         str(_SCRIPTS_DIR / "evaluate.py"),
-        "--config", str(config),
-        "--model", model_id,
-        "--split", split,
-        "--embeddings-dir", str(embeddings_dir),
-        "--output-dir", str(results_dir),
+        "--config",
+        str(config),
+        "--model",
+        model_id,
+        "--split",
+        split,
+        "--embeddings-dir",
+        str(embeddings_dir),
+        "--output-dir",
+        str(results_dir),
     ]
     logger.info("running_evaluate", model_id=model_id, split=split)
     subprocess.run(cmd, check=True)
@@ -274,10 +284,7 @@ def _print_summary_table(
         metrics_by_model: Mapping of model_id to metrics dict.
         latency_by_model: Mapping of model_id to latency dict.
     """
-    header = (
-        f"{'Model':<25} {'R@1':>7} {'R@5':>7} {'mAP@5':>7} {'MRR':>7} "
-        f"{'p50ms':>7}  Verdict"
-    )
+    header = f"{'Model':<25} {'R@1':>7} {'R@5':>7} {'mAP@5':>7} {'MRR':>7} {'p50ms':>7}  Verdict"
     print("\n" + "=" * 80)
     print("Zero-Shot Evaluation Summary")
     print("=" * 80)
@@ -300,8 +307,7 @@ def _print_summary_table(
         p50_str = f"{lat['p50_ms']:.1f}" if lat else "N/A"
         verdict = _decision_verdict(r1)
         print(
-            f"{model_id:<25} {r1:>7.4f} {r5:>7.4f} {map5:>7.4f} {mrr:>7.4f} "
-            f"{p50_str:>7}  {verdict}"
+            f"{model_id:<25} {r1:>7.4f} {r5:>7.4f} {map5:>7.4f} {mrr:>7.4f} {p50_str:>7}  {verdict}"
         )
     print("=" * 80 + "\n")
 
@@ -312,17 +318,12 @@ def main(argv: list[str] | None = None) -> None:
         description="Orchestrate zero-shot evaluation for all global embedding models.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--config", type=Path, required=True, help="Path to dataset.yaml."
-    )
+    parser.add_argument("--config", type=Path, required=True, help="Path to dataset.yaml.")
     parser.add_argument(
         "--models",
         type=str,
         default=",".join(ALL_MODEL_IDS),
-        help=(
-            f"Comma-separated model IDs (default: all). "
-            f"Available: {', '.join(ALL_MODEL_IDS)}"
-        ),
+        help=(f"Comma-separated model IDs (default: all). Available: {', '.join(ALL_MODEL_IDS)}"),
     )
     parser.add_argument(
         "--split",
@@ -377,9 +378,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         output_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
-    results_dir: Path = (
-        args.results_dir.resolve() if args.results_dir else Path.cwd() / "results"
-    )
+    results_dir: Path = args.results_dir.resolve() if args.results_dir else Path.cwd() / "results"
     # Derive manifest/splits from the same output_dir used by embed_gallery.py,
     # so --output-dir is honoured consistently across the pipeline.
     manifest_path = output_dir / "manifest.parquet"

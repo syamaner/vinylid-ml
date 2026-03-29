@@ -99,9 +99,7 @@ class TestBuildComparisonRows:
     def test_sorted_by_recall_at_1_descending(self) -> None:
         rows = build_comparison_rows(self._summary_from_fixtures(), {})
         recalls = [r["recall_at_1"] for r in rows]
-        assert recalls == sorted(
-            [r for r in recalls if r is not None], reverse=True
-        )
+        assert recalls == sorted([r for r in recalls if r is not None], reverse=True)
 
     def test_verdict_applied_correctly(self) -> None:
         rows = build_comparison_rows(self._summary_from_fixtures(), {})

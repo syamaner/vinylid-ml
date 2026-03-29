@@ -203,7 +203,9 @@ def build_comparison_rows(
         }
         rows.append(row)
 
-    rows.sort(key=lambda r: r["recall_at_1"] if r["recall_at_1"] is not None else -1.0, reverse=True)
+    rows.sort(
+        key=lambda r: r["recall_at_1"] if r["recall_at_1"] is not None else -1.0, reverse=True
+    )
     return rows
 
 
@@ -338,13 +340,9 @@ def main(argv: list[str] | None = None) -> None:
 
     results_dir: Path = args.results_dir.resolve()
     latency_csv: Path = (
-        args.latency_csv.resolve()
-        if args.latency_csv
-        else results_dir / "latency_summary.csv"
+        args.latency_csv.resolve() if args.latency_csv else results_dir / "latency_summary.csv"
     )
-    output_html: Path = (
-        args.output.resolve() if args.output else results_dir / "comparison.html"
-    )
+    output_html: Path = args.output.resolve() if args.output else results_dir / "comparison.html"
     output_csv = output_html.parent / "comparison.csv"
 
     summary = _load_summary_csv(results_dir)

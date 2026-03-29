@@ -227,20 +227,25 @@ def generate_augmented_queries(
             im, float(config.get("perspective_max_angle", 30))
         ),
         "brightness_contrast": lambda im: augment_brightness_contrast(
-            im, float(config.get("brightness_range", 0.30)),
+            im,
+            float(config.get("brightness_range", 0.30)),
             float(config.get("contrast_range", 0.20)),
         ),
         "blur": lambda im: augment_blur(
-            im, tuple(config.get("blur_sigma_range", [0.5, 2.0]))  # type: ignore[arg-type]
+            im,
+            tuple(config.get("blur_sigma_range", [0.5, 2.0])),  # type: ignore[arg-type]
         ),
         "crop": lambda im: augment_crop(
-            im, tuple(config.get("crop_scale_range", [0.70, 0.90]))  # type: ignore[arg-type]
+            im,
+            tuple(config.get("crop_scale_range", [0.70, 0.90])),  # type: ignore[arg-type]
         ),
         "noise": lambda im: augment_noise(
-            im, tuple(config.get("noise_sigma_range", [5, 25]))  # type: ignore[arg-type]
+            im,
+            tuple(config.get("noise_sigma_range", [5, 25])),  # type: ignore[arg-type]
         ),
         "downscale": lambda im: augment_downscale(
-            im, tuple(config.get("downscale_range", [400, 600]))  # type: ignore[arg-type]
+            im,
+            tuple(config.get("downscale_range", [400, 600])),  # type: ignore[arg-type]
         ),
     }
 
@@ -346,7 +351,10 @@ def main() -> None:
             per_image_seed = int(aug_config.get("seed", 42)) + idx
 
             records = generate_augmented_queries(
-                image_path, split_output, str(row["album_id"]), aug_config,
+                image_path,
+                split_output,
+                str(row["album_id"]),
+                aug_config,
                 seed=per_image_seed,
             )
             all_records.extend(records)

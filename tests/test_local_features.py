@@ -296,9 +296,7 @@ class TestFeatureConversionHelpers:
         }
         kp = _feats_to_keypoint_features(feats)
         d = _keypoint_features_to_tensor(kp, torch.device("cpu"))
-        np.testing.assert_array_almost_equal(
-            d["keypoints"][0].numpy(), kp_arr
-        )
+        np.testing.assert_array_almost_equal(d["keypoints"][0].numpy(), kp_arr)
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +313,7 @@ class TestFeatureCache:
         cache_dir = tmp_path / "cache"
         max_kp = 512
         result = _cache_path_for(img_path, cache_dir, max_kp)
-        expected_key = hashlib.sha256(
-            f"{img_path.resolve()}|max_kp={max_kp}".encode()
-        ).hexdigest()
+        expected_key = hashlib.sha256(f"{img_path.resolve()}|max_kp={max_kp}".encode()).hexdigest()
         assert result == cache_dir / f"{expected_key}.npz"
 
     def test_cache_roundtrip_preserves_features(self, tmp_path: Path) -> None:
@@ -389,18 +385,14 @@ class TestLightGlueMatcher:
         assert result.confidence == pytest.approx(0.0)
         assert result.match_scores.shape == (0,)
 
-    def test_match_returns_correct_match_count(
-        self, patched_lg_matcher: LightGlueMatcher
-    ) -> None:
+    def test_match_returns_correct_match_count(self, patched_lg_matcher: LightGlueMatcher) -> None:
         """num_matches and match_scores length match the mocked match count."""
         patched_lg_matcher._model.return_value = _make_lg_raw_output(15)
         result = patched_lg_matcher.match(_make_kp(50), _make_kp(50))
         assert result.num_matches == 15
         assert result.match_scores.shape == (15,)
 
-    def test_match_confidence_is_mean_of_scores(
-        self, patched_lg_matcher: LightGlueMatcher
-    ) -> None:
+    def test_match_confidence_is_mean_of_scores(self, patched_lg_matcher: LightGlueMatcher) -> None:
         """confidence is the mean of match_scores."""
         patched_lg_matcher._model.return_value = _make_lg_raw_output(10)
         result = patched_lg_matcher.match(_make_kp(50), _make_kp(50))
@@ -470,14 +462,10 @@ class TestLocalMatcherExtractFeatures:
         mock_extract = MagicMock(return_value=dummy_kp)
         with patch.object(patched_local_matcher._extractor, "extract", mock_extract):
             # First call — should extract
-            patched_local_matcher.extract_features(
-                list(_FIXTURE_PATHS[:2]), cache_dir=tmp_path
-            )
+            patched_local_matcher.extract_features(list(_FIXTURE_PATHS[:2]), cache_dir=tmp_path)
             first_call_count = mock_extract.call_count
             # Second call — should load from cache
-            patched_local_matcher.extract_features(
-                list(_FIXTURE_PATHS[:2]), cache_dir=tmp_path
-            )
+            patched_local_matcher.extract_features(list(_FIXTURE_PATHS[:2]), cache_dir=tmp_path)
         assert first_call_count == 2
         assert mock_extract.call_count == 2  # no extra calls on second run
 

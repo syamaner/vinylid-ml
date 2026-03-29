@@ -178,9 +178,7 @@ def embed_images(
     matrix: NDArray[np.float32] = np.stack(vecs, axis=0)  # (N, D)
 
     # L2-normalise each row; guard against zero-norm vectors
-    norms: NDArray[np.float32] = np.linalg.norm(matrix, axis=1, keepdims=True).astype(
-        np.float32
-    )
+    norms: NDArray[np.float32] = np.linalg.norm(matrix, axis=1, keepdims=True).astype(np.float32)
     norms[norms == 0.0] = 1.0
     normalised: NDArray[np.float32] = (matrix / norms).astype(np.float32)
 

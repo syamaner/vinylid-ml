@@ -154,9 +154,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         output_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
-    results_dir: Path = (
-        args.results_dir.resolve() if args.results_dir else Path.cwd() / "results"
-    )
+    results_dir: Path = args.results_dir.resolve() if args.results_dir else Path.cwd() / "results"
 
     manifest_path = output_dir / "manifest.parquet"
     splits_path = output_dir / "splits.json"

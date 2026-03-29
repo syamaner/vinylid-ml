@@ -27,7 +27,6 @@ from vinylid_ml.models import (
 logger = structlog.get_logger()
 
 
-
 def _filter_manifest_by_split(
     manifest: pd.DataFrame,
     splits: dict[str, str],
