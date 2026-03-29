@@ -64,6 +64,9 @@ Review every changed file against these criteria:
 - [ ] Unit tests for pure functions, integration tests for model/IO code
 - [ ] Tests cover both happy path and error cases
 - [ ] No test implementation/fakes in production code
+- [ ] **No tautological assertions** — comparisons like `sorted(x) == sorted(x)` or `x == x` always pass regardless of the function under test. Always assert on the *actual* function output vs. an *independently derived* expected value.
+  - Bad: `lrs = sorted(f()); assert lrs == sorted(lrs)` ← always true
+  - Good: `lrs = [g['lr'] for g in f()]; assert lrs == sorted(lrs)` ← tests actual order
 
 ### Privacy & Security
 - [ ] No test photo paths committed to git
