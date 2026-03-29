@@ -18,9 +18,8 @@ Python 3.11+ ML project for on-device album cover recognition. PyTorch, torchvis
 
 ## Known Project Decisions — Do Not Flag
 These are intentional choices already documented in the codebase:
-- **`torch.load(..., weights_only=False)`** — our checkpoints contain `optimizer_state_dict` and `loss_state_dict` produced exclusively by `scripts/train.py`. The comment in the code explains this. Do not flag.
+- **`torch.load(..., weights_only=False)`** — our checkpoints contain `optimizer_state_dict` and `loss_state_dict` produced exclusively by `scripts/train.py`. This is a trusted internal file, not user-supplied input. Do not flag, and do not suggest switching to `weights_only=True`.
 - **`embed_finetuned.py --output-dir` vs `data_dir`** — `--output-dir` controls where embeddings are written; `data_dir` (manifest/splits) always comes from the config. This is intentional, not a bug.
-- **`weights_only=True` suggestions** — our full checkpoint format (optimizer state, loss state) requires `False`. Do not suggest switching.
 - **Pre-existing formatting issues** — any files not in the diff that have formatting differences are pre-existing and out of scope.
 
 ## Focus: High-Value Issues Only
@@ -31,7 +30,7 @@ These are intentional choices already documented in the codebase:
 - Missing input validation that the CLI/API docs promise (e.g., method says raises ValueError but doesn’t)
 - Privacy violations: real-world photo paths in code or results, EXIF not stripped
 - Missing seeds for RNG in training/evaluation scripts (reproducibility requirement)
-- Security: hardcoded secrets, path traversal in user-supplied strings, arbitrary code execution
+- Security: hardcoded secrets, path traversal in user-supplied strings (note: `torch.load` on our own checkpoints is covered under Known Project Decisions — do not re-flag)
 
 ### Flag with Justification Required
 - Missing error handling for external I/O (only if the failure mode is unclear or silent)
