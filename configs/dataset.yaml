@@ -4,7 +4,7 @@
 
 paths:
   # Root directory containing album-export/{ArtistFolder}/{AlbumTitle}/{images}
-  gallery_root: /Volumes/externalssd/vinyl/album-export
+  gallery_root: ../data/album-export
 
   # SQLite database from the original .NET EF Core app
   sqlite_db: /Volumes/nvme1/vinyl/vinylid/data/db/vinylid.db

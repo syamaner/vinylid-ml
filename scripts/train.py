@@ -27,12 +27,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
 import structlog
 import torch
 import yaml
+from PIL import Image
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset
 
@@ -163,6 +165,53 @@ def _build_llrd_param_groups(
     return groups if groups else [{"params": list(backbone.parameters()), "lr": backbone_lr}]
 
 
+def _apply_backbone_training_strategy(
+    model: FineTuneModel,
+    unfreeze_blocks: int | None,
+) -> None:
+    """Apply the requested full or partial backbone unfreezing policy."""
+    if unfreeze_blocks is not None:
+        model.partial_unfreeze_backbone(unfreeze_blocks)
+    elif model.is_backbone_frozen():
+        model.unfreeze_backbone()
+
+
+def _build_finetune_optimizer(
+    model: FineTuneModel,
+    loss_fn: torch.nn.Module,
+    backbone_name: str,
+    lr: float,
+    weight_decay: float,
+    backbone_lr_mult: float,
+    llrd_decay: float | None,
+) -> torch.optim.AdamW:
+    """Build AdamW param groups for the model's current trainable state."""
+    head_params = list(model.projection.parameters()) + list(loss_fn.parameters())
+    trainable_backbone = [p for p in model.backbone.parameters() if p.requires_grad]
+
+    if not trainable_backbone:
+        return torch.optim.AdamW(
+            [{"params": head_params, "lr": lr}],
+            weight_decay=weight_decay,
+        )
+
+    backbone_lr = lr * backbone_lr_mult
+    if llrd_decay is not None:
+        backbone_groups = _build_llrd_param_groups(
+            model.backbone,
+            backbone_name,
+            backbone_lr,
+            llrd_decay,
+        )
+    else:
+        backbone_groups = [{"params": trainable_backbone, "lr": backbone_lr}]
+
+    return torch.optim.AdamW(
+        [*backbone_groups, {"params": head_params, "lr": lr}],
+        weight_decay=weight_decay,
+    )
+
+
 # ── Multi-view Dataset Wrapper ──────────────────────────────────────────
 
 
@@ -202,6 +251,8 @@ class MultiViewAlbumDataset(Dataset[tuple[torch.Tensor, int]]):
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         img, label = self._inner[idx]
+        if not isinstance(img, Image.Image):
+            raise TypeError(f"Expected PIL Image from AlbumCoverDataset, got {type(img)}")
         views: torch.Tensor = self._mvt(img)
         return views, label
 
@@ -529,26 +580,25 @@ def main(argv: list[str] | None = None) -> None:
 
     is_supcon = args.loss == "supcon"
 
+    train_dataset: MultiViewAlbumDataset | AlbumCoverDataset
     if is_supcon:
         mvt = MultiViewTransform(get_train_transforms(), n_views=2)
-        train_dataset: Dataset[tuple[torch.Tensor, int]] = MultiViewAlbumDataset(
+        train_dataset = MultiViewAlbumDataset(
             manifest=manifest,
             splits=splits_for_train,
             split_name="train",
             multi_view_transform=mvt,
             gallery_root=gallery_root,
         )
-        num_classes = train_dataset.num_classes  # type: ignore[union-attr]
     else:
-        train_ds = AlbumCoverDataset(
+        train_dataset = AlbumCoverDataset(
             manifest=manifest,
             splits=splits_for_train,
             split_name="train",
             transform=get_train_transforms(),
             gallery_root=gallery_root,
         )
-        train_dataset = train_ds
-        num_classes = train_ds.num_classes
+    num_classes = train_dataset.num_classes
 
     val_dataset = AlbumCoverDataset(
         manifest=manifest,
@@ -566,12 +616,15 @@ def main(argv: list[str] | None = None) -> None:
         val_classes=val_dataset.num_classes,
     )
 
-    train_loader: DataLoader[tuple[torch.Tensor, int]] = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=4,
-        drop_last=True,
+    train_loader = cast(
+        "DataLoader[tuple[torch.Tensor, int]]",
+        DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=4,
+            drop_last=True,
+        ),
     )
 
     # ── Model + Loss ────────────────────────────────────────────────
@@ -598,10 +651,18 @@ def main(argv: list[str] | None = None) -> None:
         ).to(device)
     else:
         loss_fn = SupConLoss(temperature=args.temperature).to(device)
+    if args.freeze_epochs == 0:
+        _apply_backbone_training_strategy(model, args.unfreeze_blocks)
 
-    # Optimiser: model params + loss params (ArcFace weights, proxies)
-    all_params = list(model.parameters()) + list(loss_fn.parameters())
-    optimizer = torch.optim.AdamW(all_params, lr=args.lr, weight_decay=1e-4)
+    optimizer = _build_finetune_optimizer(
+        model=model,
+        loss_fn=loss_fn,
+        backbone_name=args.backbone,
+        lr=args.lr,
+        weight_decay=1e-4,
+        backbone_lr_mult=args.backbone_lr_mult,
+        llrd_decay=args.llrd_decay,
+    )
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     # ── Config logging ──────────────────────────────────────────────
@@ -650,31 +711,21 @@ def main(argv: list[str] | None = None) -> None:
 
         # Staged unfreezing
         if args.freeze_epochs > 0 and epoch == args.freeze_epochs:
-            backbone_lr = args.lr * args.backbone_lr_mult
-            if args.unfreeze_blocks is not None:
-                model.partial_unfreeze_backbone(args.unfreeze_blocks)
-            else:
-                model.unfreeze_backbone()
-
-            # Build backbone param groups (LLRD or uniform)
-            if args.llrd_decay is not None:
-                backbone_groups = _build_llrd_param_groups(
-                    model.backbone, args.backbone, backbone_lr, args.llrd_decay
-                )
-            else:
-                trainable_backbone = [p for p in model.backbone.parameters() if p.requires_grad]
-                backbone_groups = [{"params": trainable_backbone, "lr": backbone_lr}]
-
-            head_params = list(model.projection.parameters()) + list(loss_fn.parameters())
-            optimizer = torch.optim.AdamW(
-                [*backbone_groups, {"params": head_params, "lr": args.lr}],
+            _apply_backbone_training_strategy(model, args.unfreeze_blocks)
+            optimizer = _build_finetune_optimizer(
+                model=model,
+                loss_fn=loss_fn,
+                backbone_name=args.backbone,
+                lr=args.lr,
                 weight_decay=1e-4,
+                backbone_lr_mult=args.backbone_lr_mult,
+                llrd_decay=args.llrd_decay,
             )
             scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs - epoch)
             logger.info(
                 "unfreeze_at_epoch",
                 epoch=epoch,
-                backbone_lr=backbone_lr,
+                backbone_lr=args.lr * args.backbone_lr_mult,
                 llrd=args.llrd_decay is not None,
                 num_param_groups=len(optimizer.param_groups),
             )
