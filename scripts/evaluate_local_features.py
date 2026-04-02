@@ -472,9 +472,7 @@ def _mode_sample(
                 sscd_model, gallery_paths, data_dir, gallery_root
             )
         except Exception as exc:
-            logger.warning(
-                "sscd_prefilter_failed_falling_back_to_superpoint", error=str(exc)
-            )
+            logger.warning("sscd_prefilter_failed_falling_back_to_superpoint", error=str(exc))
             sscd_model = None
             sscd_tfm = None
             gallery_sscd = None

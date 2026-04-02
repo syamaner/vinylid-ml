@@ -283,13 +283,11 @@ def load_embeddings(output_dir: Path, model_id: str) -> EmbeddingResult:
 
     if not isinstance(raw_paths, list):
         raise TypeError(
-            f"Expected list for 'image_paths' in {meta_path}, "
-            f"got {type(raw_paths).__name__}"
+            f"Expected list for 'image_paths' in {meta_path}, got {type(raw_paths).__name__}"
         )
     if not isinstance(raw_albums, list):
         raise TypeError(
-            f"Expected list for 'album_ids' in {meta_path}, "
-            f"got {type(raw_albums).__name__}"
+            f"Expected list for 'album_ids' in {meta_path}, got {type(raw_albums).__name__}"
         )
 
     # isinstance narrows Any → list[Unknown] in pyright strict mode;

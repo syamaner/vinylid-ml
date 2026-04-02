@@ -81,8 +81,9 @@ def test_featureprint_model_id_constant() -> None:
 
 def test_import_vision_raises_import_error_when_missing() -> None:
     """_import_vision raises ImportError with hint when Vision/Foundation are absent."""
-    with patch.dict("sys.modules", {"Vision": None, "Foundation": None}), pytest.raises(
-        ImportError, match="pyobjc-framework-Vision"
+    with (
+        patch.dict("sys.modules", {"Vision": None, "Foundation": None}),
+        pytest.raises(ImportError, match="pyobjc-framework-Vision"),
     ):
         _import_vision()
 
@@ -93,9 +94,7 @@ def test_import_vision_raises_import_error_when_missing() -> None:
 class TestExtractFeatureVector:
     """Tests for extract_feature_vector()."""
 
-    def test_returns_float32_array_for_float_element_type(
-        self, tmp_path: Path
-    ) -> None:
+    def test_returns_float32_array_for_float_element_type(self, tmp_path: Path) -> None:
         """elementType=1 (float32 source) returns a float32 array with correct values."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
@@ -140,9 +139,7 @@ class TestExtractFeatureVector:
 
         assert result.dtype == np.float32
         assert result.shape == (2,)
-        np.testing.assert_array_almost_equal(
-            result, np.array(values, dtype=np.float32), decimal=5
-        )
+        np.testing.assert_array_almost_equal(result, np.array(values, dtype=np.float32), decimal=5)
 
     def test_raises_file_not_found_for_missing_path(self, tmp_path: Path) -> None:
         """Passing a path that does not exist raises FileNotFoundError."""
@@ -155,15 +152,18 @@ class TestExtractFeatureVector:
         img.write_bytes(b"fake")
 
         mock_vision = MagicMock()
-        mock_vision.VNImageRequestHandler.alloc.return_value.initWithURL_options_.return_value.performRequests_error_.side_effect = (
-            RuntimeError("Vision failed")
+        mock_vision.VNImageRequestHandler.alloc.return_value.initWithURL_options_.return_value.performRequests_error_.side_effect = RuntimeError(
+            "Vision failed"
         )
         mock_foundation = MagicMock()
 
-        with patch(
-            "vinylid_ml.apple_featureprint._import_vision",
-            return_value=(mock_vision, mock_foundation),
-        ), pytest.raises(RuntimeError, match="VNGenerateImageFeaturePrintRequest failed"):
+        with (
+            patch(
+                "vinylid_ml.apple_featureprint._import_vision",
+                return_value=(mock_vision, mock_foundation),
+            ),
+            pytest.raises(RuntimeError, match="VNGenerateImageFeaturePrintRequest failed"),
+        ):
             extract_feature_vector(img)
 
     def test_raises_runtime_error_when_results_empty(self, tmp_path: Path) -> None:
@@ -179,15 +179,16 @@ class TestExtractFeatureVector:
         )
         mock_foundation = MagicMock()
 
-        with patch(
-            "vinylid_ml.apple_featureprint._import_vision",
-            return_value=(mock_vision, mock_foundation),
-        ), pytest.raises(RuntimeError, match="No FeaturePrint results"):
+        with (
+            patch(
+                "vinylid_ml.apple_featureprint._import_vision",
+                return_value=(mock_vision, mock_foundation),
+            ),
+            pytest.raises(RuntimeError, match="No FeaturePrint results"),
+        ):
             extract_feature_vector(img)
 
-    def test_raises_runtime_error_on_element_count_mismatch(
-        self, tmp_path: Path
-    ) -> None:
+    def test_raises_runtime_error_on_element_count_mismatch(self, tmp_path: Path) -> None:
         """Mismatch between elementCount and actual data bytes raises RuntimeError."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
@@ -206,15 +207,16 @@ class TestExtractFeatureVector:
         )
         mock_foundation = MagicMock()
 
-        with patch(
-            "vinylid_ml.apple_featureprint._import_vision",
-            return_value=(mock_vision, mock_foundation),
-        ), pytest.raises(RuntimeError, match="data size mismatch"):
+        with (
+            patch(
+                "vinylid_ml.apple_featureprint._import_vision",
+                return_value=(mock_vision, mock_foundation),
+            ),
+            pytest.raises(RuntimeError, match="data size mismatch"),
+        ):
             extract_feature_vector(img)
 
-    def test_raises_runtime_error_for_unknown_element_type(
-        self, tmp_path: Path
-    ) -> None:
+    def test_raises_runtime_error_for_unknown_element_type(self, tmp_path: Path) -> None:
         """An element_type not in {1, 2} raises RuntimeError with 'Unsupported'."""
         img = tmp_path / "img.jpg"
         img.write_bytes(b"fake")
@@ -232,10 +234,13 @@ class TestExtractFeatureVector:
         )
         mock_foundation = MagicMock()
 
-        with patch(
-            "vinylid_ml.apple_featureprint._import_vision",
-            return_value=(mock_vision, mock_foundation),
-        ), pytest.raises(RuntimeError, match="Unsupported VNElementType"):
+        with (
+            patch(
+                "vinylid_ml.apple_featureprint._import_vision",
+                return_value=(mock_vision, mock_foundation),
+            ),
+            pytest.raises(RuntimeError, match="Unsupported VNElementType"),
+        ):
             extract_feature_vector(img)
 
     def test_result_is_a_copy(self, tmp_path: Path) -> None:

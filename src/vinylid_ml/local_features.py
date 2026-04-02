@@ -292,6 +292,7 @@ class LightGlueMatcher:
         feats0 = self.prepare_features(kp0)
         feats1 = self.prepare_features(kp1)
         return self.match_prepared(feats0, feats1)
+
     def count_matches(self, kp0: KeypointFeatures, kp1: KeypointFeatures) -> int:
         """Return only the retained match count for two images.
 
@@ -617,6 +618,7 @@ def _patch_cross_attention_sdpa(model: Any) -> None:
         )
         if mask is not None:
             m0, m1 = m0.nan_to_num(), m1.nan_to_num()
+
         def _reshape(t: torch.Tensor) -> torch.Tensor:
             return t.transpose(1, 2).flatten(start_dim=-2)
 
@@ -675,15 +677,9 @@ def _feats_to_keypoint_features(feats: dict[str, Any]) -> KeypointFeatures:
     Returns:
         ``KeypointFeatures`` with arrays of shape ``(N, *)`` (no batch dim).
     """
-    keypoints: NDArray[np.float32] = (
-        feats["keypoints"][0].cpu().numpy().astype(np.float32)
-    )
-    descriptors: NDArray[np.float32] = (
-        feats["descriptors"][0].cpu().numpy().astype(np.float32)
-    )
-    scores: NDArray[np.float32] = (
-        feats["keypoint_scores"][0].cpu().numpy().astype(np.float32)
-    )
+    keypoints: NDArray[np.float32] = feats["keypoints"][0].cpu().numpy().astype(np.float32)
+    descriptors: NDArray[np.float32] = feats["descriptors"][0].cpu().numpy().astype(np.float32)
+    scores: NDArray[np.float32] = feats["keypoint_scores"][0].cpu().numpy().astype(np.float32)
     img_size_arr: NDArray[np.float32] = feats["image_size"][0].cpu().numpy()
     image_size = (int(img_size_arr[0]), int(img_size_arr[1]))  # (W, H)
     return KeypointFeatures(
@@ -713,9 +709,9 @@ def _keypoint_features_to_tensor(
     return {
         "keypoints": torch.from_numpy(kp.keypoints).unsqueeze(0).to(device),
         "descriptors": torch.from_numpy(kp.descriptors).unsqueeze(0).to(device),
-        "image_size": torch.tensor(
-            [[kp.image_size[0], kp.image_size[1]]], dtype=torch.float32
-        ).to(device),
+        "image_size": torch.tensor([[kp.image_size[0], kp.image_size[1]]], dtype=torch.float32).to(
+            device
+        ),
     }
 
 

@@ -11,18 +11,45 @@ Split into:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 import torch
+import torch.nn as nn
 from PIL import Image
 from torchvision import transforms
 
+from scripts.train import (
+    _apply_backbone_training_strategy,
+    _build_finetune_optimizer,
+    _build_llrd_param_groups,
+)
 from vinylid_ml.training import (
     BACKBONE_DIMS,
     FineTuneModel,
     MultiViewTransform,
     TrainingConfig,
 )
+
+# ── Mock ViT-like backbone for unit-testing LLRD and partial unfreeze ──────────
+
+
+class _MockViTBackbone(nn.Module):
+    """Minimal ViT-like backbone with patch_embed, blocks, and norm.
+
+    Mimics DINOv2 named-parameter structure without a real model download.
+    """
+
+    def __init__(self, num_blocks: int = 4) -> None:
+        super().__init__()
+        self.patch_embed = nn.Linear(3, 8)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, 8))
+        self.blocks = nn.ModuleList([nn.Linear(8, 8) for _ in range(num_blocks)])
+        self.norm = nn.LayerNorm(8)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # pragma: no cover
+        return x
+
 
 # ============================================================
 # Unit tests — no model download required
@@ -185,6 +212,240 @@ class TestBackboneDims:
         assert BACKBONE_DIMS["sscd"] == 512
 
 
+class TestTrainingConfigLLRDFields:
+    """Tests for the new LLRD-related TrainingConfig fields."""
+
+    def test_defaults(self) -> None:
+        """backbone_lr_mult, llrd_decay, unfreeze_blocks have correct defaults."""
+        config = TrainingConfig()
+        assert config.backbone_lr_mult == pytest.approx(0.1)
+        assert config.llrd_decay is None
+        assert config.unfreeze_blocks is None
+
+    def test_llrd_fields_roundtrip(self, tmp_path: Path) -> None:
+        """LLRD fields survive a save → load roundtrip."""
+        original = TrainingConfig(backbone_lr_mult=0.01, llrd_decay=0.9, unfreeze_blocks=4)
+        path = tmp_path / "config.json"
+        original.save(path)
+        loaded = TrainingConfig.load(path)
+        assert loaded.backbone_lr_mult == pytest.approx(0.01)
+        assert loaded.llrd_decay == pytest.approx(0.9)
+        assert loaded.unfreeze_blocks == 4
+
+    def test_llrd_fields_in_to_dict(self) -> None:
+        """LLRD fields appear as top-level keys in to_dict()."""
+        config = TrainingConfig(backbone_lr_mult=0.01, llrd_decay=0.9)
+        d = config.to_dict()
+        assert "backbone_lr_mult" in d
+        assert "llrd_decay" in d
+        assert "unfreeze_blocks" in d
+
+
+class TestBuildLLRDParamGroups:
+    """Unit tests for _build_llrd_param_groups using a mock ViT backbone."""
+
+    def test_non_dinov2_returns_single_group(self) -> None:
+        """Non-DINOv2 backbone returns a single uniform LR group."""
+        backbone = _MockViTBackbone(num_blocks=4)
+        groups = _build_llrd_param_groups(
+            backbone, "mobilenet_v3_small", backbone_lr=1e-5, decay=0.9
+        )
+        assert len(groups) == 1
+        assert groups[0]["lr"] == pytest.approx(1e-5)
+
+    def test_dinov2_produces_multiple_groups(self) -> None:
+        """DINOv2 LLRD produces more groups than a single uniform group."""
+        backbone = _MockViTBackbone(num_blocks=4)
+        groups = _build_llrd_param_groups(backbone, "dinov2", backbone_lr=1e-6, decay=0.9)
+        assert len(groups) > 1
+
+    def test_outermost_block_highest_lr(self) -> None:
+        """Last (outermost) block gets full backbone_lr; inner blocks get less."""
+        backbone = _MockViTBackbone(num_blocks=4)
+        groups = _build_llrd_param_groups(backbone, "dinov2", backbone_lr=1e-6, decay=0.9)
+        lrs: list[float] = [cast("float", g["lr"]) for g in groups]
+        assert max(lrs) == pytest.approx(1e-6)  # outermost block or norm
+
+    def test_lr_monotonically_increases_with_depth(self) -> None:
+        """Group LRs from _build_llrd_param_groups are in ascending order."""
+        backbone = _MockViTBackbone(num_blocks=4)
+        groups = _build_llrd_param_groups(backbone, "dinov2", backbone_lr=1e-6, decay=0.9)
+        lrs: list[float] = [cast("float", g["lr"]) for g in groups]
+        assert lrs == sorted(lrs), f"Expected ascending LRs, got {lrs}"
+
+    def test_no_frozen_params_in_groups(self) -> None:
+        """No parameter with requires_grad=False appears in any group."""
+        backbone = _MockViTBackbone(num_blocks=4)
+        # Freeze everything except last block
+        for name, param in backbone.named_parameters():
+            param.requires_grad = name.startswith("blocks.3")
+        groups = _build_llrd_param_groups(backbone, "dinov2", backbone_lr=1e-6, decay=0.9)
+        for group in groups:
+            for p in cast("list[torch.nn.Parameter]", group["params"]):
+                assert p.requires_grad
+
+    def test_all_trainable_params_covered(self) -> None:
+        """Every trainable param appears in exactly one group."""
+        backbone = _MockViTBackbone(num_blocks=4)
+        groups = _build_llrd_param_groups(backbone, "dinov2", backbone_lr=1e-6, decay=0.9)
+        all_group_ids = [
+            id(p) for g in groups for p in cast("list[torch.nn.Parameter]", g["params"])
+        ]
+        trainable_ids = [id(p) for p in backbone.parameters() if p.requires_grad]
+        assert sorted(all_group_ids) == sorted(trainable_ids)
+
+
+class TestBuildFineTuneOptimizer:
+    """Unit tests for backbone-aware optimizer construction."""
+
+    def _make_model_with_mock_backbone(self, num_blocks: int = 6) -> FineTuneModel:
+        """Build a FineTuneModel instance with a mock ViT backbone (no download)."""
+        model = FineTuneModel.__new__(FineTuneModel)
+        nn.Module.__init__(model)  # must call Module.__init__ before assigning submodules
+        mock_backbone = _MockViTBackbone(num_blocks=num_blocks)
+        for p in mock_backbone.parameters():
+            p.requires_grad = False
+        model.backbone = mock_backbone
+        model._backbone_name = "dinov2"  # type: ignore[attr-defined]
+        model._projection_dim = 8  # type: ignore[attr-defined]
+        model.projection = nn.Sequential(nn.Linear(8, 8), nn.LayerNorm(8))
+        return model
+
+    def test_frozen_backbone_uses_head_group_only(self) -> None:
+        """Frozen backbone excludes backbone params from the initial optimizer."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        loss_fn = nn.Linear(8, 4)
+        optimizer = _build_finetune_optimizer(
+            model=model,
+            loss_fn=loss_fn,
+            backbone_name="dinov2",
+            lr=1e-4,
+            weight_decay=1e-4,
+            backbone_lr_mult=0.01,
+            llrd_decay=0.9,
+        )
+
+        assert len(optimizer.param_groups) == 1
+        assert optimizer.param_groups[0]["lr"] == pytest.approx(1e-4)
+        optimized_params = cast("list[torch.nn.Parameter]", optimizer.param_groups[0]["params"])
+        optimized_param_ids = {id(p) for p in optimized_params}
+        backbone_param_ids = {id(p) for p in model.backbone.parameters()}
+        assert optimized_param_ids.isdisjoint(backbone_param_ids)
+
+    def test_partial_unfreeze_from_start_uses_backbone_lr_multiplier(self) -> None:
+        """Epoch-0 partial unfreeze uses separate backbone and head learning rates."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        _apply_backbone_training_strategy(model, unfreeze_blocks=2)
+        loss_fn = nn.Linear(8, 4)
+        optimizer = _build_finetune_optimizer(
+            model=model,
+            loss_fn=loss_fn,
+            backbone_name="dinov2",
+            lr=1e-4,
+            weight_decay=1e-4,
+            backbone_lr_mult=0.01,
+            llrd_decay=None,
+        )
+
+        assert len(optimizer.param_groups) == 2
+        assert optimizer.param_groups[0]["lr"] == pytest.approx(1e-6)
+        assert optimizer.param_groups[1]["lr"] == pytest.approx(1e-4)
+
+    def test_partial_unfreeze_from_start_supports_llrd(self) -> None:
+        """Epoch-0 partial unfreeze applies LLRD to trainable DINOv2 blocks."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        _apply_backbone_training_strategy(model, unfreeze_blocks=2)
+        loss_fn = nn.Linear(8, 4)
+        optimizer = _build_finetune_optimizer(
+            model=model,
+            loss_fn=loss_fn,
+            backbone_name="dinov2",
+            lr=1e-4,
+            weight_decay=1e-4,
+            backbone_lr_mult=0.01,
+            llrd_decay=0.9,
+        )
+
+        group_lrs: list[float] = [cast("float", group["lr"]) for group in optimizer.param_groups]
+        assert group_lrs[:-1] == sorted(group_lrs[:-1])
+        assert max(group_lrs[:-1]) == pytest.approx(1e-6)
+        assert min(group_lrs[:-1]) < max(group_lrs[:-1])
+        assert group_lrs[-1] == pytest.approx(1e-4)
+
+
+class TestPartialUnfreezeBackbone:
+    """Unit tests for FineTuneModel.partial_unfreeze_backbone using a mock backbone."""
+
+    def _make_model_with_mock_backbone(self, num_blocks: int = 6) -> FineTuneModel:
+        """Build a FineTuneModel instance with a mock ViT backbone (no download)."""
+        model = FineTuneModel.__new__(FineTuneModel)
+        nn.Module.__init__(model)  # must call Module.__init__ before assigning submodules
+        mock_backbone = _MockViTBackbone(num_blocks=num_blocks)
+        # Freeze all backbone params first
+        for p in mock_backbone.parameters():
+            p.requires_grad = False
+        model.backbone = mock_backbone
+        model._backbone_name = "dinov2"  # type: ignore[attr-defined]
+        model._projection_dim = 8  # type: ignore[attr-defined]
+        model.projection = nn.Sequential(nn.Linear(8, 8), nn.LayerNorm(8))
+        return model
+
+    def test_last_n_blocks_unfrozen(self) -> None:
+        """After partial unfreeze, only the last n_blocks blocks are trainable."""
+        model = self._make_model_with_mock_backbone(num_blocks=6)
+        model.partial_unfreeze_backbone(n_blocks=2)
+        backbone = model.backbone
+        for name, param in backbone.named_parameters():
+            if name.startswith("blocks."):
+                block_idx = int(name.split(".")[1])
+                expected = block_idx >= 4  # last 2 of 6
+                assert param.requires_grad == expected, f"{name}: expected {expected}"
+
+    def test_norm_always_unfrozen(self) -> None:
+        """The final norm layer is always unfrozen in partial unfreeze."""
+        model = self._make_model_with_mock_backbone(num_blocks=6)
+        model.partial_unfreeze_backbone(n_blocks=1)
+        for name, param in model.backbone.named_parameters():
+            if name.startswith("norm"):
+                assert param.requires_grad
+
+    def test_patch_embed_stays_frozen(self) -> None:
+        """patch_embed remains frozen after partial unfreeze."""
+        model = self._make_model_with_mock_backbone(num_blocks=6)
+        model.partial_unfreeze_backbone(n_blocks=3)
+        for name, param in model.backbone.named_parameters():
+            if "patch_embed" in name or "cls_token" in name:
+                assert not param.requires_grad
+
+    def test_n_blocks_ge_total_unfreezes_all_blocks(self) -> None:
+        """n_blocks >= num_blocks unfreezes all transformer blocks."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        model.partial_unfreeze_backbone(n_blocks=10)  # more than 4 blocks
+        for name, param in model.backbone.named_parameters():
+            if name.startswith("blocks."):
+                assert param.requires_grad
+
+    def test_non_dinov2_falls_back_to_full_unfreeze(self) -> None:
+        """Non-DINOv2 backbone fully unfreezes (with a warning)."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        model._backbone_name = "mobilenet_v3_small"  # type: ignore[attr-defined]
+        model.partial_unfreeze_backbone(n_blocks=2)
+        # Full unfreeze: all backbone params trainable
+        assert all(p.requires_grad for p in model.backbone.parameters())
+
+    def test_n_blocks_zero_raises(self) -> None:
+        """n_blocks=0 raises ValueError."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        with pytest.raises(ValueError, match="n_blocks must be >= 1"):
+            model.partial_unfreeze_backbone(n_blocks=0)
+
+    def test_n_blocks_negative_raises(self) -> None:
+        """Negative n_blocks raises ValueError."""
+        model = self._make_model_with_mock_backbone(num_blocks=4)
+        with pytest.raises(ValueError, match="n_blocks must be >= 1"):
+            model.partial_unfreeze_backbone(n_blocks=-1)
+
+
 class TestFineTuneModelProperties:
     """Test FineTuneModel properties without loading actual models."""
 
@@ -224,7 +485,7 @@ class TestFineTuneModelDINOv2Integration:
         """Output embeddings have unit L2 norm."""
         images = torch.rand(2, 3, 224, 224)
         embeddings = dinov2_finetune_model(images)
-        norms = torch.norm(embeddings, p=2, dim=-1)
+        norms = cast("torch.Tensor", torch.norm(embeddings, p=2, dim=-1))
         torch.testing.assert_close(norms, torch.ones_like(norms), atol=1e-4, rtol=0.0)
 
     def test_output_on_cpu(self, dinov2_finetune_model: FineTuneModel) -> None:

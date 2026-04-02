@@ -202,6 +202,62 @@ class FineTuneModel(nn.Module):
         self.backbone.train()
         logger.info("backbone_unfrozen", backbone=self._backbone_name)
 
+    def partial_unfreeze_backbone(self, n_blocks: int) -> None:
+        """Unfreeze only the last ``n_blocks`` transformer blocks of the backbone.
+
+        Only the output-side transformer blocks and the final norm layer are
+        set to ``requires_grad=True``; all earlier parameters stay frozen.
+        Falls back to :meth:`unfreeze_backbone` for non-DINOv2 backbones.
+
+        Args:
+            n_blocks: Number of transformer blocks to unfreeze (counted from
+                the output end, i.e. the highest-indexed blocks).
+                Must be >= 1.
+
+        Raises:
+            ValueError: If ``n_blocks`` is less than 1.
+        """
+        if n_blocks < 1:
+            msg = f"n_blocks must be >= 1, got {n_blocks}"
+            raise ValueError(msg)
+        if self._backbone_name != "dinov2":
+            logger.warning(
+                "partial_unfreeze_not_supported",
+                backbone=self._backbone_name,
+                msg="partial_unfreeze_backbone requires DINOv2; falling back to full unfreeze",
+            )
+            self.unfreeze_backbone()
+            return
+
+        # Determine total block count from named parameters
+        block_indices = {
+            int(name.split(".")[1])
+            for name, _ in self.backbone.named_parameters()
+            if name.startswith("blocks.")
+        }
+        num_total = max(block_indices) + 1 if block_indices else 12
+        unfreeze_from = max(0, num_total - n_blocks)
+
+        for name, param in self.backbone.named_parameters():
+            if name.startswith("blocks."):
+                block_idx = int(name.split(".")[1])
+                param.requires_grad = block_idx >= unfreeze_from
+            elif name.startswith("norm"):
+                param.requires_grad = True
+            else:
+                # patch_embed, pos_embed, cls_token, etc. remain frozen
+                param.requires_grad = False
+
+        self.backbone.train()
+        trainable = sum(p.numel() for p in self.backbone.parameters() if p.requires_grad)
+        logger.info(
+            "backbone_partially_unfrozen",
+            backbone=self._backbone_name,
+            n_blocks=n_blocks,
+            unfreeze_from_block=unfreeze_from,
+            trainable_params=trainable,
+        )
+
     def is_backbone_frozen(self) -> bool:
         """Check whether the backbone parameters are frozen."""
         return not any(p.requires_grad for p in self.backbone.parameters())
@@ -312,6 +368,14 @@ class TrainingConfig:
         seed: Random seed for reproducibility.
         subset_albums: If set, train on only this many albums.
         freeze_epochs: Number of initial epochs with backbone frozen.
+        backbone_lr_mult: Backbone learning-rate multiplier applied at unfreeze
+            time (``backbone_lr = lr * backbone_lr_mult``). Default 0.1 gives
+            1/10 of the head LR; use 0.01 for ViT backbones.
+        llrd_decay: Layer-wise LR decay factor for ViT backbones. Each
+            successive transformer block (from output inward) is multiplied by
+            this factor. ``None`` disables LLRD (uniform backbone LR).
+        unfreeze_blocks: Number of transformer blocks to unfreeze from the
+            output end. ``None`` unfreezes the full backbone.
         patience: Early stopping patience (epochs without val R@1 improvement).
             ``None`` disables early stopping.
         margin: ArcFace/ProxyAnchor margin parameter.
@@ -337,6 +401,9 @@ class TrainingConfig:
     seed: int = 42
     subset_albums: int | None = None
     freeze_epochs: int = 0
+    backbone_lr_mult: float = 0.1
+    llrd_decay: float | None = None
+    unfreeze_blocks: int | None = None
     patience: int | None = None
     margin: float = 0.5
     scale: float = 64.0

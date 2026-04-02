@@ -22,10 +22,7 @@ try:
     from jinja2 import BaseLoader, Environment
     from markupsafe import Markup
 except ImportError as exc:
-    _msg = (
-        "Report generation requires the 'eval' extra. "
-        "Install with: pip install -e '.[eval]'"
-    )
+    _msg = "Report generation requires the 'eval' extra. Install with: pip install -e '.[eval]'"
     raise ImportError(_msg) from exc
 
 if TYPE_CHECKING:

@@ -33,3 +33,10 @@ Apply these standards when writing or modifying experiment scripts, training cod
 - Never log file paths to real-world test photos in results that will be shared publicly
 - Results uploaded to HF Hub should contain only aggregate metrics, not per-image predictions with paths
 - When saving sample predictions for debugging, use release_id (MusicBrainz UUID) not file paths
+
+## ViT Fine-Tuning Recipe (DINOv2)
+Catastrophic forgetting is severe in self-supervised ViTs. Use this recipe for any DINOv2 fine-tuning:
+- **backbone_lr = 1e-6** (i.e. `--backbone-lr-mult 0.01` with default head lr=1e-4). Using 1e-5 causes post-unfreeze degradation — the model peaks at the exact unfreeze epoch then declines.
+- **LLRD decay = 0.9** (`--llrd-decay 0.9`): layer-wise LR decay gives outer ViT blocks the highest LR; inner blocks are barely updated, preserving pre-trained representations.
+- **freeze_epochs ≥ 10** (`--freeze-epochs 10`): warm up the projection head fully before exposing the backbone to the fine-tuning signal. 5 epochs is insufficient.
+- Confirmed by B2 diagnostic (backbone_lr=1e-5, freeze_epochs=5 → degraded) vs B2c (backbone_lr=1e-6, LLRD=0.9, freeze_epochs=10 → R@1=0.8795, beats zero-shot).

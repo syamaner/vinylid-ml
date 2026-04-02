@@ -176,9 +176,11 @@ class ProxyAnchorLoss(nn.Module):
 
         # Positive/negative masks: (C, B). Match embeddings' dtype to avoid
         # unintended upcasting in mixed-precision training.
-        p_one_hot = F.one_hot(labels, self._num_classes).to(
-            device=embeddings.device, dtype=embeddings.dtype
-        ).T
+        p_one_hot = (
+            F.one_hot(labels, self._num_classes)
+            .to(device=embeddings.device, dtype=embeddings.dtype)
+            .T
+        )
         n_one_hot = 1.0 - p_one_hot
 
         # Which proxies have at least one positive sample in this batch?
