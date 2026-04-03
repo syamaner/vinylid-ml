@@ -1,5 +1,5 @@
 ---
-applyTo: "tests/**/*.py"
+globs: "tests/**/*.py"
 ---
 
 # Test Code Review

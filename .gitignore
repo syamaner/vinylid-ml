@@ -63,5 +63,9 @@ data/*/metadata.json
 # Progress tracking (local only)
 PROGRESS.md
 
+# Claude Code (local-only files)
+CLAUDE.local.md
+.claude/settings.local.json
+
 # HF Hub cache
 .cache/

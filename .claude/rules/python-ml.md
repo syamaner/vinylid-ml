@@ -1,5 +1,5 @@
 ---
-applyTo: "src/**/*.py"
+globs: "src/**/*.py"
 ---
 
 # Python ML Source Code Review

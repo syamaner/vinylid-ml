@@ -43,6 +43,13 @@
 - **Pre-filter choice matters**: SuperPoint mean-descriptor pre-filter has ~15% recall@50 on phone×catalog
   pairs. A4-sscd (trained for copy detection) is the correct pre-filter for cross-domain retrieval.
 
+## Epic State Management
+- This project tracks active work in `docs/state/`.
+- Before starting a story, read `docs/state/registry.md` to find the relevant epic file.
+- Read the epic file for current status, latest results, and next steps.
+- When finishing a task or pausing, update the epic file (check off steps, refresh Active Context and Latest Results, log decisions).
+- If the epic's overall status changes, update `docs/state/registry.md` too.
+
 ## Commit Messages
 - Reference the relevant plan section (e.g., "Section 4: implement manifest builder")
 - Include `Co-Authored-By: Oz <oz-agent@warp.dev>` when AI-assisted
