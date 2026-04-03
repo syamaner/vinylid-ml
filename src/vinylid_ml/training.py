@@ -20,6 +20,8 @@ import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 from PIL import Image
 
+from vinylid_ml.models import get_device
+
 __all__ = [
     "FineTuneModel",
     "MultiViewTransform",
@@ -122,7 +124,7 @@ class FineTuneModel(nn.Module):
         backbone_name: One of ``"dinov2"``, ``"mobilenet_v3_small"``,
             ``"sscd"``.
         projection_dim: Output embedding dimensionality after projection.
-        device: Torch device.  ``None`` auto-detects MPS / CPU.
+        device: Torch device.  ``None`` auto-detects CUDA, MPS, or CPU.
         freeze_backbone: If ``True``, the backbone starts with all
             parameters frozen (``requires_grad=False``).
     """
@@ -139,9 +141,7 @@ class FineTuneModel(nn.Module):
         self._projection_dim = projection_dim
 
         if device is None:
-            device = (
-                torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-            )
+            device = get_device()
         if backbone_name not in BACKBONE_DIMS:
             raise ValueError(
                 f"Unknown backbone '{backbone_name}'. Supported: {sorted(BACKBONE_DIMS.keys())}"

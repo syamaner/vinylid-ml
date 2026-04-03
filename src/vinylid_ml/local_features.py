@@ -38,6 +38,8 @@ import torch
 from numpy.typing import NDArray
 from PIL import Image
 
+from vinylid_ml.models import get_device
+
 if TYPE_CHECKING:
     from lightglue import LightGlue as _LightGlueT
     from lightglue import SuperPoint as _SuperPointT
@@ -122,7 +124,7 @@ class SuperPointExtractor:
 
     Args:
         max_num_keypoints: Maximum keypoints to detect per image.  Default 2048.
-        device: Torch device.  ``None`` = auto-detect (MPS on Apple Silicon, else CPU).
+        device: Torch device.  ``None`` = auto-detect (CUDA, then MPS, then CPU).
 
     Raises:
         ImportError: If ``lightglue`` is not installed.
@@ -133,7 +135,7 @@ class SuperPointExtractor:
         max_num_keypoints: int = 2048,
         device: torch.device | None = None,
     ) -> None:
-        self._device = device or _get_device()
+        self._device = device or get_device()
         self._max_kp = max_num_keypoints
         self._model: _SuperPointT = _load_superpoint(max_num_keypoints, self._device)
 
@@ -199,14 +201,14 @@ class LightGlueMatcher:
     geometrically verified inliers.
 
     Args:
-        device: Torch device.  ``None`` = auto-detect.
+        device: Torch device.  ``None`` = auto-detect (CUDA, then MPS, then CPU).
 
     Raises:
         ImportError: If ``lightglue`` is not installed.
     """
 
     def __init__(self, device: torch.device | None = None) -> None:
-        self._device = device or _get_device()
+        self._device = device or get_device()
         self._model: _LightGlueT = _load_lightglue(self._device)
 
     def prepare_features(self, kp: KeypointFeatures) -> dict[str, torch.Tensor]:
@@ -328,7 +330,7 @@ class LocalFeatureMatcher:
 
     Args:
         max_keypoints: Maximum keypoints per image.  Default 2048.
-        device: Torch device.  ``None`` = auto-detect.
+        device: Torch device.  ``None`` = auto-detect (CUDA, then MPS, then CPU).
     """
 
     def __init__(
@@ -336,7 +338,7 @@ class LocalFeatureMatcher:
         max_keypoints: int = 2048,
         device: torch.device | None = None,
     ) -> None:
-        _device = device or _get_device()
+        _device = device or get_device()
         self._extractor = SuperPointExtractor(max_num_keypoints=max_keypoints, device=_device)
         self._matcher = LightGlueMatcher(device=_device)
 
@@ -512,17 +514,6 @@ class LocalFeatureMatcher:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _get_device() -> torch.device:
-    """Return the best available torch device (MPS on Apple Silicon, else CPU).
-
-    Returns:
-        ``torch.device`` for MPS if available, otherwise CPU.
-    """
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def _load_superpoint(max_num_keypoints: int, device: torch.device) -> _SuperPointT:

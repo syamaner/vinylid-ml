@@ -44,11 +44,13 @@ logger = structlog.get_logger()
 
 
 def get_device() -> torch.device:
-    """Get the best available torch device (MPS on macOS, else CPU).
+    """Get the best available torch device (CUDA, then MPS, then CPU).
 
     Returns:
-        torch.device for MPS if available, otherwise CPU.
+        ``torch.device`` for CUDA if available, otherwise MPS, otherwise CPU.
     """
+    if torch.cuda.is_available():
+        return torch.device("cuda")
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
@@ -147,7 +149,7 @@ class DINOv2Embedder(EmbeddingModel):
         pooling: Embedding extraction method — 'cls' for [CLS] token,
             'gem' for Generalized Mean pooling over patch tokens.
         gem_p: GeM exponent (only used when pooling='gem'). Default 3.0.
-        device: Torch device. If None, auto-detects MPS or CPU.
+        device: Torch device. If None, auto-detects CUDA, MPS, or CPU.
     """
 
     def __init__(
@@ -241,7 +243,7 @@ class OpenCLIPEmbedder(EmbeddingModel):
     Args:
         model_name: OpenCLIP model name. Default 'ViT-B-32'.
         pretrained: Pretrained weights tag. Default 'laion2b_s34b_b79k'.
-        device: Torch device. If None, auto-detects MPS or CPU.
+        device: Torch device. If None, auto-detects CUDA, MPS, or CPU.
     """
 
     def __init__(
@@ -340,7 +342,7 @@ class SSCDEmbedder(EmbeddingModel):
 
     Args:
         variant: SSCD model variant. Default 'sscd_disc_mixup'.
-        device: Torch device. If None, auto-detects MPS or CPU.
+        device: Torch device. If None, auto-detects CUDA, MPS, or CPU.
     """
 
     def __init__(
