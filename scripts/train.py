@@ -442,6 +442,18 @@ def main(argv: list[str] | None = None) -> None:
         default=4,
         help="DataLoader worker processes (default: 4).",
     )
+    parser.add_argument(
+        "--val-num-workers",
+        type=int,
+        default=None,
+        help="Validation DataLoader worker processes (default: min(num_workers, 4)).",
+    )
+    parser.add_argument(
+        "--prefetch-factor",
+        type=int,
+        default=None,
+        help="Training DataLoader prefetch factor for num_workers > 0 (default: PyTorch default).",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
     parser.add_argument("--freeze-epochs", type=int, default=0, help="Epochs with backbone frozen.")
     parser.add_argument(
@@ -510,6 +522,20 @@ def main(argv: list[str] | None = None) -> None:
             msg="--unfreeze-blocks must be >= 1",
         )
         sys.exit(1)
+    if args.val_num_workers is not None and args.val_num_workers < 0:
+        logger.error(
+            "invalid_val_num_workers",
+            value=args.val_num_workers,
+            msg="--val-num-workers must be >= 0",
+        )
+        sys.exit(1)
+    if args.prefetch_factor is not None and args.prefetch_factor < 1:
+        logger.error(
+            "invalid_prefetch_factor",
+            value=args.prefetch_factor,
+            msg="--prefetch-factor must be >= 1",
+        )
+        sys.exit(1)
 
     # ── Config ──────────────────────────────────────────────────────
     config_path: Path = args.config.resolve()
@@ -531,6 +557,9 @@ def main(argv: list[str] | None = None) -> None:
     results_dir = args.output_dir.resolve() if args.output_dir else Path.cwd() / "results"
     device = get_device()
     use_pin_memory = device.type == "cuda"
+    val_num_workers = (
+        args.val_num_workers if args.val_num_workers is not None else min(args.num_workers, 4)
+    )
     backbone_dim = BACKBONE_DIMS[args.backbone]
     projection_dim = args.projection_dim or backbone_dim
 
@@ -632,19 +661,33 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if args.num_workers > 0:
-        train_loader = cast(
-            "DataLoader[tuple[torch.Tensor, int]]",
-            DataLoader(
-                train_dataset,
-                batch_size=args.batch_size,
-                shuffle=True,
-                num_workers=args.num_workers,
-                pin_memory=use_pin_memory,
-                drop_last=True,
-                persistent_workers=True,
-                prefetch_factor=4,
-            ),
-        )
+        if args.prefetch_factor is not None:
+            train_loader = cast(
+                "DataLoader[tuple[torch.Tensor, int]]",
+                DataLoader(
+                    train_dataset,
+                    batch_size=args.batch_size,
+                    shuffle=True,
+                    num_workers=args.num_workers,
+                    pin_memory=use_pin_memory,
+                    drop_last=True,
+                    persistent_workers=True,
+                    prefetch_factor=args.prefetch_factor,
+                ),
+            )
+        else:
+            train_loader = cast(
+                "DataLoader[tuple[torch.Tensor, int]]",
+                DataLoader(
+                    train_dataset,
+                    batch_size=args.batch_size,
+                    shuffle=True,
+                    num_workers=args.num_workers,
+                    pin_memory=use_pin_memory,
+                    drop_last=True,
+                    persistent_workers=True,
+                ),
+            )
     else:
         train_loader = cast(
             "DataLoader[tuple[torch.Tensor, int]]",
@@ -726,6 +769,8 @@ def main(argv: list[str] | None = None) -> None:
             "torch_version": torch.__version__,
             "model_name": model_name,
             "num_workers": args.num_workers,
+            "val_num_workers": val_num_workers,
+            "prefetch_factor": args.prefetch_factor,
             "timestamp": timestamp,
         },
     )
@@ -770,7 +815,7 @@ def main(argv: list[str] | None = None) -> None:
             model,
             val_dataset,
             batch_size=args.batch_size,
-            num_workers=args.num_workers,
+            num_workers=val_num_workers,
             pin_memory=use_pin_memory,
         )
         epoch_time = time.monotonic() - epoch_start
