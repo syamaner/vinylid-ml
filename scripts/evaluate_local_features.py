@@ -876,8 +876,12 @@ def main(argv: list[str] | None = None) -> None:
         "--mode",
         type=str,
         required=True,
-        choices=["sample", "test"],
-        help="Evaluation mode: 'sample' (55-photo) or 'test' (full test split).",
+        choices=["sample", "test", "complete"],
+        help=(
+            "Evaluation mode: 'sample' (55-photo sample), "
+            "'test' (full test-split gallery/query), or "
+            "'complete' (243-photo real-world phone photos)."
+        ),
     )
     parser.add_argument(
         "--top-k",
@@ -959,9 +963,15 @@ def main(argv: list[str] | None = None) -> None:
     test_sample_dir = Path(str(config["paths"]["test_sample"]))
     if not test_sample_dir.is_absolute():
         test_sample_dir = (config_dir / test_sample_dir).resolve()
+
+    test_complete_dir = Path(str(config["paths"].get("test_complete", "")))
+    if str(test_complete_dir) and not test_complete_dir.is_absolute():
+        test_complete_dir = (config_dir / test_complete_dir).resolve()
+
     data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
     test_sample_matched_csv = data_dir / "test_sample_matched.csv"
+    test_complete_matched_csv = data_dir / "test_complete_matched.csv"
     manifest_path = data_dir / "manifest.parquet"
     splits_path = data_dir / "splits.json"
 
@@ -1003,6 +1013,45 @@ def main(argv: list[str] | None = None) -> None:
             manifest=manifest,
             test_sample_dir=test_sample_dir,
             test_sample_matched_csv=test_sample_matched_csv,
+            run_dir=run_dir,
+            results_dir=results_dir,
+            timestamp=timestamp,
+            feature_cache_dir=feature_cache_dir,
+            match_score_min=args.match_score_min,
+            data_dir=data_dir,
+            gallery_root=gallery_root,
+            sample_limit=args.sample_limit,
+            sample_gallery_limit=args.sample_gallery_limit,
+            top_k_sample=args.top_k_sample,
+            precompute_gallery_tensors=args.precompute_gallery_tensors,
+        )
+
+    elif args.mode == "complete":
+        # 243-photo real-world phone eval: reuses sample-mode logic with the
+        # complete test set CSV and directory.  Privacy guardrail: photo paths
+        # are never written to results — only aggregate metrics are saved.
+        if not test_complete_matched_csv.exists():
+            logger.error(
+                "test_complete_matched_csv_not_found",
+                path=str(test_complete_matched_csv),
+                hint="Run prepare_dataset.py first to generate test_complete_matched.csv",
+            )
+            sys.exit(1)
+        if not str(test_complete_dir) or not test_complete_dir.exists():
+            logger.error(
+                "test_complete_dir_not_found",
+                path=str(test_complete_dir),
+                hint="Set paths.test_complete in your dataset config",
+            )
+            sys.exit(1)
+        run_dir = results_dir / f"{LOCAL_FEATURE_MODEL_ID}-phone" / timestamp
+        _mode_sample(
+            matcher=matcher,
+            gallery_paths=gallery_paths,
+            gallery_album_ids=gallery_album_ids,
+            manifest=manifest,
+            test_sample_dir=test_complete_dir,
+            test_sample_matched_csv=test_complete_matched_csv,
             run_dir=run_dir,
             results_dir=results_dir,
             timestamp=timestamp,

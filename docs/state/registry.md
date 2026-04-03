@@ -10,10 +10,10 @@ Then open the linked state file for full context.
 
 ## Sprint 2: Remaining Items (deferred)
 
-- **[#13] C2 full test-split eval** — NOT STARTED
-  - State: (no file yet — create when starting)
-- **[#15] Real phone photo eval (243 labeled)** — NOT STARTED
-  - State: (no file yet — create when starting)
+- **[#13] C2 full test-split eval** — IN PROGRESS
+  - State: `docs/state/epics/13-c2-local-features.md`
+- **[#15] Real phone photo eval (243 labeled)** — IN PROGRESS
+  - State: `docs/state/epics/15-phone-photo-eval.md`
 
 ## Sprint 4: CoreML + Index + E2E Integration
 
