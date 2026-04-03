@@ -202,6 +202,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
+    if args.num_workers < 0:
+        parser.error("--num-workers must be greater than or equal to 0.")
 
     # Load config
     config_path: Path = args.config.resolve()

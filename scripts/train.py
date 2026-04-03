@@ -507,6 +507,13 @@ def main(argv: list[str] | None = None) -> None:
     if args.patience is not None and args.patience < 1:
         logger.error("invalid_patience", value=args.patience, msg="--patience must be >= 1")
         sys.exit(1)
+    if args.num_workers < 0:
+        logger.error(
+            "invalid_num_workers",
+            value=args.num_workers,
+            msg="--num-workers must be >= 0",
+        )
+        sys.exit(1)
     if args.backbone_lr_mult <= 0:
         logger.error("invalid_backbone_lr_mult", value=args.backbone_lr_mult)
         sys.exit(1)
@@ -534,6 +541,14 @@ def main(argv: list[str] | None = None) -> None:
             "invalid_prefetch_factor",
             value=args.prefetch_factor,
             msg="--prefetch-factor must be >= 1",
+        )
+        sys.exit(1)
+    if args.prefetch_factor is not None and args.num_workers <= 0:
+        logger.error(
+            "invalid_prefetch_factor_num_workers",
+            prefetch_factor=args.prefetch_factor,
+            num_workers=args.num_workers,
+            msg="--prefetch-factor requires --num-workers > 0",
         )
         sys.exit(1)
 
@@ -569,6 +584,13 @@ def main(argv: list[str] | None = None) -> None:
 
     _seed_everything(args.seed)
     if device.type == "cuda":
+        logger.warning(
+            "cudnn_benchmark_enabled",
+            msg=(
+                "Enabling torch.backends.cudnn.benchmark may reduce run-to-run "
+                "determinism on CUDA, even when seeds are set."
+            ),
+        )
         torch.backends.cudnn.benchmark = True
 
     timestamp = time.strftime("%Y-%m-%dT%H-%M-%S", time.gmtime())
