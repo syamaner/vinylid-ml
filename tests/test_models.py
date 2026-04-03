@@ -74,10 +74,36 @@ class TestGetDevice:
         device = get_device()
         assert isinstance(device, torch.device)
 
-    def test_returns_mps_or_cpu(self) -> None:
-        """Device should be 'mps' if available, else 'cpu'."""
+    def test_prefers_cuda_when_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CUDA should take precedence over MPS and CPU when available."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+        monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+
         device = get_device()
-        assert device.type in ("mps", "cpu")
+
+        assert device.type == "cuda"
+
+    def test_falls_back_to_mps_when_cuda_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MPS should be used when CUDA is unavailable and MPS is available."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+
+        device = get_device()
+
+        assert device.type == "mps"
+
+    def test_falls_back_to_cpu_when_no_accelerator_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CPU should be used when neither CUDA nor MPS is available."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+
+        device = get_device()
+
+        assert device.type == "cpu"
 
 
 class TestModelProperties:
