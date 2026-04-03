@@ -371,7 +371,7 @@ def _train_one_epoch(
     num_batches = 0
 
     for batch_idx, (images, labels) in enumerate(loader):
-        labels = labels.to(model.device)
+        labels = labels.to(model.device, non_blocking=True)
 
         if is_supcon:
             # images: (B, N_views, C, H, W) → embed each view separately
@@ -384,7 +384,7 @@ def _train_one_epoch(
 
         loss = loss_fn(embeddings, labels)
 
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
 
@@ -631,17 +631,32 @@ def main(argv: list[str] | None = None) -> None:
         val_classes=val_dataset.num_classes,
     )
 
-    train_loader = cast(
-        "DataLoader[tuple[torch.Tensor, int]]",
-        DataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-            num_workers=args.num_workers,
-            pin_memory=use_pin_memory,
-            drop_last=True,
-        ),
-    )
+    if args.num_workers > 0:
+        train_loader = cast(
+            "DataLoader[tuple[torch.Tensor, int]]",
+            DataLoader(
+                train_dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+                num_workers=args.num_workers,
+                pin_memory=use_pin_memory,
+                drop_last=True,
+                persistent_workers=True,
+                prefetch_factor=4,
+            ),
+        )
+    else:
+        train_loader = cast(
+            "DataLoader[tuple[torch.Tensor, int]]",
+            DataLoader(
+                train_dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+                num_workers=args.num_workers,
+                pin_memory=use_pin_memory,
+                drop_last=True,
+            ),
+        )
 
     # ── Model + Loss ────────────────────────────────────────────────
     model = FineTuneModel(
