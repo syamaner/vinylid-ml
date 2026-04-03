@@ -5,7 +5,7 @@ Then open the linked state file for full context.
 
 ## Sprint 3: Fine-Tuning + Hybrid Pipeline
 
-- **[#19] B3: SSCD + SupCon** — IN PROGRESS
+- **[#19] B3: SSCD + SupCon** — DONE (closed: SSCD fine-tuning did not beat zero-shot)
   - State: `docs/state/epics/19-b3-sscd-supcon.md`
 
 ## Sprint 2: Remaining Items (deferred)

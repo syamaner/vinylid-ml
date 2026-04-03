@@ -13,16 +13,15 @@ leader (R@1=0.8795).
 - [x] Run 1 (baseline): `freeze_epochs=5`, `backbone_lr_mult=0.1`
 - [x] Test-split evaluation for Run 1
 - [x] Run 2 (retune): `freeze_epochs=10`, `backbone_lr_mult=0.01`
-- [ ] Decide on Run 3 hypothesis or close the story
+- [x] Decide on Run 3 hypothesis or close the story
 
 ## Active Context
 
-**Current task:** Decide whether a third SSCD training run is worthwhile, or
-whether to close #19 with the conclusion that SSCD does not benefit from
-fine-tuning in this setup.
+**Current task:** None — story closed.
 
-**Last action:** Completed Run 2 — it was worse than Run 1. The conservative
-B2c-style recipe (lower backbone LR, longer freeze) did not transfer to SSCD.
+**Last action:** Decided to close #19 without a Run 3. Neither recipe improved
+over A4 zero-shot SSCD, and the TorchScript backbone limits fine-tuning
+effectiveness. B2c DINOv2+SupCon remains the best fine-tuned model.
 
 ## Latest Results
 
@@ -53,6 +52,8 @@ Config: `freeze_epochs=10`, `backbone_lr_mult=0.01`, `lr=1e-4`, `batch_size=32`
 - **Decision (2026-04-02):** Copying the B2c recipe (0.01× backbone LR, 10-epoch
   freeze) made things worse, not better. SSCD (TorchScript ResNet50) does not
   respond to the same fine-tuning knobs as DINOv2 ViT.
-- **Open question:** Is there an SSCD-specific hypothesis worth testing (e.g.
-  lower LR still, or no backbone unfreezing at all), or should we close #19 and
-  move to Sprint 4?
+- **Decision (2026-04-03):** Closing #19 without a Run 3. SSCD's TorchScript
+  JIT graph limits gradient flow compared to a native nn.Module. A third recipe
+  would need a fundamentally different approach (distillation, non-JIT backbone)
+  which exceeds this story's scope. B2c DINOv2+SupCon (R@1=0.8795) is confirmed
+  as the Sprint 3 winner.
