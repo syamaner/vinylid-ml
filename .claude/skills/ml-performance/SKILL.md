@@ -5,7 +5,7 @@ Apply these standards when writing inference, embedding extraction, or search co
 ## Batch Processing
 - Never embed one image at a time — minimum batch size 32, tune based on available memory
 - Use `torch.utils.data.DataLoader` with `num_workers` > 0 for I/O-bound image loading
-- Prefer `pin_memory=True` when using GPU/MPS
+- Prefer `pin_memory=True` for CUDA DataLoaders
 
 ## Inference Mode
 - Use `torch.inference_mode()` for all evaluation and embedding extraction (faster than `torch.no_grad()`)
@@ -13,12 +13,18 @@ Apply these standards when writing inference, embedding extraction, or search co
 - Disable gradient computation and dropout explicitly
 
 ## Device Management
-- Use MPS (Metal Performance Shaders) on macOS when available:
+- Prefer CUDA when available, then MPS on macOS, then CPU:
   ```python
-  device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+  if torch.cuda.is_available():
+      device = torch.device("cuda")
+  elif torch.backends.mps.is_available():
+      device = torch.device("mps")
+  else:
+      device = torch.device("cpu")
   ```
-- Fall back to CPU gracefully — never crash if MPS is unavailable
+- Fall back to CPU gracefully — never crash if CUDA/MPS is unavailable
 - Minimize data copies between CPU and MPS/GPU; keep tensors on device through the pipeline
+- Enable `torch.backends.cudnn.benchmark = True` for fixed-size CUDA workloads
 - Be aware of MPS limitations: some ops may fall back to CPU silently
 
 ## Memory Optimization

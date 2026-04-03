@@ -47,6 +47,7 @@ from vinylid_ml.dataset import (
 )
 from vinylid_ml.eval_metrics import compute_retrieval_metrics
 from vinylid_ml.losses import ArcFaceLoss, ProxyAnchorLoss, SupConLoss
+from vinylid_ml.models import get_device
 from vinylid_ml.training import (
     BACKBONE_DIMS,
     FineTuneModel,
@@ -65,6 +66,8 @@ def _seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)  # type: ignore[reportUnknownMemberType]
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)  # type: ignore[reportUnknownMemberType]
     if torch.backends.mps.is_available():
         torch.mps.manual_seed(seed)  # type: ignore[reportUnknownMemberType]
 
@@ -91,12 +94,6 @@ def _manifest_hash(manifest_path: Path) -> str:
     h = hashlib.sha256(manifest_path.read_bytes()).hexdigest()[:12]
     return h
 
-
-def _get_device() -> torch.device:
-    """Get best available device."""
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def _build_llrd_param_groups(
@@ -275,6 +272,8 @@ def _evaluate_val(
     model: FineTuneModel,
     val_dataset: AlbumCoverDataset,
     batch_size: int,
+    num_workers: int,
+    pin_memory: bool,
 ) -> dict[str, float]:
     """Evaluate model on validation split using retrieval metrics.
 
@@ -285,12 +284,20 @@ def _evaluate_val(
         model: Fine-tune model in eval mode.
         val_dataset: Validation AlbumCoverDataset.
         batch_size: Batch size for embedding extraction.
+        num_workers: DataLoader worker processes.
+        pin_memory: Whether to pin host memory for CUDA transfer.
 
     Returns:
         Dict with recall_at_1, recall_at_5, map_at_5, mrr.
     """
     model.eval()
-    loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
 
     all_embeddings: list[np.ndarray] = []
     all_labels: list[int] = []
@@ -429,6 +436,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs (default: 10).")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (default: 1e-4).")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size (default: 32).")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="DataLoader worker processes (default: 4).",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default: 42).")
     parser.add_argument("--freeze-epochs", type=int, default=0, help="Epochs with backbone frozen.")
     parser.add_argument(
@@ -516,8 +529,8 @@ def main(argv: list[str] | None = None) -> None:
     manifest_path = data_dir / "manifest.parquet"
     splits_path = data_dir / "splits.json"
     results_dir = args.output_dir.resolve() if args.output_dir else Path.cwd() / "results"
-
-    device = _get_device()
+    device = get_device()
+    use_pin_memory = device.type == "cuda"
     backbone_dim = BACKBONE_DIMS[args.backbone]
     projection_dim = args.projection_dim or backbone_dim
 
@@ -526,6 +539,8 @@ def main(argv: list[str] | None = None) -> None:
         args.margin = 0.1 if args.loss == "proxy-anchor" else 0.5
 
     _seed_everything(args.seed)
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
 
     timestamp = time.strftime("%Y-%m-%dT%H-%M-%S", time.gmtime())
     git_sha = _get_git_sha()
@@ -622,7 +637,8 @@ def main(argv: list[str] | None = None) -> None:
             train_dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=4,
+            num_workers=args.num_workers,
+            pin_memory=use_pin_memory,
             drop_last=True,
         ),
     )
@@ -694,6 +710,7 @@ def main(argv: list[str] | None = None) -> None:
         extra={
             "torch_version": torch.__version__,
             "model_name": model_name,
+            "num_workers": args.num_workers,
             "timestamp": timestamp,
         },
     )
@@ -734,7 +751,13 @@ def main(argv: list[str] | None = None) -> None:
         scheduler.step()
 
         # Val evaluation
-        val_metrics = _evaluate_val(model, val_dataset, batch_size=args.batch_size)
+        val_metrics = _evaluate_val(
+            model,
+            val_dataset,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=use_pin_memory,
+        )
         epoch_time = time.monotonic() - epoch_start
 
         # Log LR — single group (frozen), two groups (uniform unfreeze), or

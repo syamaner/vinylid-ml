@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +29,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from vinylid_ml.dataset import get_eval_transforms, load_manifest, load_splits
 from vinylid_ml.gallery import EmbeddingResult, save_embeddings
+from vinylid_ml.models import get_device
 from vinylid_ml.training import FineTuneModel, TrainingConfig
 
 logger = structlog.get_logger()
@@ -52,7 +54,7 @@ class _SplitImageDataset(Dataset[tuple[torch.Tensor, str, str]]):
         manifest: pd.DataFrame,
         splits: dict[str, str],
         split_name: str,
-        transform: torch.nn.Module,
+        transform: Callable[[Image.Image], torch.Tensor],
         gallery_root: Path,
     ) -> None:
         album_ids_in_split = {aid for aid, s in splits.items() if s == split_name}
@@ -93,12 +95,6 @@ def _collate(
     return torch.stack(tensors), list(paths), list(album_ids)
 
 
-def _get_device() -> torch.device:
-    """Get best available device."""
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
 
 @torch.inference_mode()
 def embed_with_finetuned(
@@ -120,12 +116,14 @@ def embed_with_finetuned(
         Tuple of (embeddings_np, image_paths, album_ids).
     """
     model.eval()
+    use_pin_memory = model.device.type == "cuda"
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         collate_fn=_collate,
+        pin_memory=use_pin_memory,
     )
 
     all_embeddings: list[np.ndarray] = []
@@ -196,6 +194,12 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Output directory for embeddings (default: from config).",
     )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="DataLoader worker processes (default: 4).",
+    )
 
     args = parser.parse_args(argv)
 
@@ -238,7 +242,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("train_config_not_found", path=str(train_config_path))
         sys.exit(1)
 
-    device = _get_device()
+    device = get_device()
 
     logger.info(
         "embed_finetuned_start",
@@ -296,7 +300,10 @@ def main(argv: list[str] | None = None) -> None:
 
     # Embed
     embeddings_np, image_paths, album_ids = embed_with_finetuned(
-        model, dataset, batch_size=args.batch_size
+        model,
+        dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
 
     # Save in standard format

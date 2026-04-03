@@ -35,6 +35,8 @@ from numpy.typing import NDArray
 from PIL import Image
 from torchvision import transforms
 
+from vinylid_ml.models import get_device
+
 __all__ = [
     "PATCHES_PER_IMAGE_224",
     "PATCH_DIM",
@@ -126,7 +128,7 @@ class DINOv2PatchExtractor:
     ``(N_patches, 384)`` patch token matrix instead of pooling to a single vector.
 
     Args:
-        device: Torch device.  ``None`` = auto-detect (MPS on Apple Silicon, else CPU).
+        device: Torch device.  ``None`` = auto-detect (CUDA, then MPS, then CPU).
         input_size: Input image resolution.  Must be divisible by 14.  Default 224.
     """
 
@@ -137,8 +139,7 @@ class DINOv2PatchExtractor:
     ) -> None:
         if input_size % 14 != 0:
             raise ValueError(f"input_size must be divisible by 14, got {input_size}")
-
-        self._device = device or _get_device()
+        self._device = device or get_device()
         self._input_size = input_size
 
         logger.info(
@@ -476,13 +477,6 @@ def extract_with_cache(
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _get_device() -> torch.device:
-    """Return the best available torch device (MPS on Apple Silicon, else CPU)."""
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def _load_image(image: Image.Image | Path) -> tuple[Image.Image, tuple[int, int]]:
