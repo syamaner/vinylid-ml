@@ -43,7 +43,8 @@ from PIL import Image as PILImage
 
 from vinylid_ml.dataset import load_manifest, load_splits
 from vinylid_ml.gallery import load_embeddings
-from vinylid_ml.models import ALL_MODEL_IDS, create_model
+from vinylid_ml.models import ALL_MODEL_IDS, EmbeddingModel
+from vinylid_ml.models import create_model as _create_model
 
 logger = structlog.get_logger()
 
@@ -101,27 +102,37 @@ def _load_phone_photo_stripped(photo_path: Path) -> PILImage.Image:
 def _select_gallery_for_phone_eval(
     manifest: pd.DataFrame,
     splits: dict[str, str],
+    extra_album_ids: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Select the canonical gallery image path and album ID per test album.
+    """Select the canonical gallery image per test-split album, plus any extras.
 
     Mirrors the logic in ``evaluate_local_features._select_gallery_images``:
-    picks the highest-resolution image per album.
+    picks the highest-resolution image per album.  Expands the gallery with
+    ``extra_album_ids`` not already in the test split (e.g. phone photos whose
+    album is in train/val).  This mirrors ``_mode_sample`` gallery expansion
+    so that all matched phone photos have a corresponding gallery entry.
 
     Args:
         manifest: Full manifest DataFrame.
         splits: Album ID -> split name mapping.
+        extra_album_ids: Optional additional album IDs to include in gallery
+            (e.g. albums referenced by phone photos outside the test split).
 
     Returns:
         ``(gallery_paths_str, gallery_album_ids)`` — path strings and album IDs
-        for the one canonical image per test-split album.
+        for the canonical image per selected album.
     """
     test_album_ids = {aid for aid, s in splits.items() if s == "test"}
-    test_df = manifest[manifest["album_id"].isin(test_album_ids)].copy()
+    all_album_ids = set(test_album_ids)
+    if extra_album_ids:
+        all_album_ids |= extra_album_ids
+
+    selected_df = manifest[manifest["album_id"].isin(all_album_ids)].copy()
 
     gallery_paths: list[str] = []
     gallery_album_ids: list[str] = []
 
-    for album_id, group in test_df.groupby("album_id"):
+    for album_id, group in selected_df.groupby("album_id"):
         if len(group) == 1:
             row = group.iloc[0]
         else:
@@ -250,6 +261,7 @@ def evaluate_model(
     match_score_min: int,
     batch_size: int,
     device: torch.device,
+    model: object = None,  # pre-loaded model; loaded lazily if None
 ) -> dict[str, object]:
     """Evaluate a single global embedding model against phone photos.
 
@@ -289,19 +301,51 @@ def evaluate_model(
         for i, p in enumerate(gallery_result.image_paths)
     }
 
-    # Align gallery embeddings with our canonical gallery order
+    # ── Load model (needed for on-the-fly gallery embedding of extra albums) ─
+    loaded_model: EmbeddingModel = (
+        model  # type: ignore[assignment]
+        if isinstance(model, EmbeddingModel)
+        else _create_model(model_id)
+    )
+    tfm = loaded_model.get_transforms()
+
+    # Align gallery embeddings with our canonical gallery order.
+    # Extra albums (not in pre-computed embeddings) are embedded on-the-fly.
     gallery_embeddings: list[NDArray[np.float32]] = []
     valid_gallery_paths: list[str] = []
     valid_gallery_album_ids: list[str] = []
+    n_cached = 0
+    n_live = 0
 
     for gpath, gaid in zip(gallery_paths_str, gallery_album_ids, strict=True):
         emb = path_to_emb.get(gpath)
-        if emb is None:
-            logger.debug("gallery_embedding_missing", path=gpath)
-            continue
+        if emb is not None:
+            n_cached += 1
+        else:
+            # Extra album not in pre-computed embeddings — embed on-the-fly.
+            try:
+                with PILImage.open(gpath) as img:
+                    img.load()
+                    clean = PILImage.new(img.mode, img.size)
+                    clean.paste(img)
+                clean = clean.convert("RGB")
+                t: torch.Tensor = tfm(clean)  # type: ignore[assignment]
+                emb = loaded_model.embed(t.unsqueeze(0)).numpy()[0].astype(np.float32)
+                n_live += 1
+            except (OSError, ValueError, RuntimeError) as exc:
+                logger.debug("extra_gallery_embed_error", path=gpath, error=str(exc))
+                continue
         gallery_embeddings.append(emb)
         valid_gallery_paths.append(gpath)
         valid_gallery_album_ids.append(gaid)
+
+    logger.info(
+        "gallery_embeddings_ready",
+        model_id=model_id,
+        n_cached=n_cached,
+        n_live=n_live,
+        total=len(gallery_embeddings),
+    )
 
     if not gallery_embeddings:
         raise ValueError(f"No gallery embeddings matched for model {model_id}")
@@ -336,10 +380,6 @@ def evaluate_model(
         min_score=match_score_min,
     )
 
-    # ── Load model ────────────────────────────────────────────────────────
-    model = create_model(model_id)
-    tfm = model.get_transforms()
-
     # ── Embed phone photos (with in-memory EXIF stripping) ────────────────
     query_embeddings: list[NDArray[np.float32]] = []
     query_labels_list: list[int] = []
@@ -364,7 +404,7 @@ def evaluate_model(
 
         tensor: torch.Tensor = tfm(img)  # type: ignore[assignment]
         batch = tensor.unsqueeze(0)
-        emb = model.embed(batch).numpy()[0].astype(np.float32)
+        emb = loaded_model.embed(batch).numpy()[0].astype(np.float32)
 
         query_embeddings.append(emb)
         query_labels_list.append(album_to_label[album_id])
@@ -563,12 +603,39 @@ def main(argv: list[str] | None = None) -> None:
     # ── Build gallery path/album_id list ──────────────────────────────────
     manifest = load_manifest(manifest_path)
     splits = load_splits(splits_path)
-    gallery_paths_str, gallery_album_ids = _select_gallery_for_phone_eval(manifest, splits)
+
+    # Pre-load matched CSV to find albums outside the test split that need to be
+    # added to the gallery.  This mirrors _mode_sample gallery expansion so
+    # that ALL matched phone photos have a retrievable gallery entry.
+    pre_matched = pd.read_csv(test_complete_matched_csv)
+    pre_matched_filtered = pre_matched[
+        (pre_matched["file_exists"] == True)  # noqa: E712
+        & pre_matched["matched_album_id"].notna()
+        & (pre_matched["matched_album_id"].astype(str).str.len() > 0)
+        & (pre_matched["match_score"] >= args.match_score_min)
+    ]
+    test_album_ids_in_splits = {aid for aid, s in splits.items() if s == "test"}
+    extra_album_ids: set[str] = {
+        str(aid)
+        for aid in pre_matched_filtered["matched_album_id"].unique()
+        if str(aid) not in test_album_ids_in_splits
+    }
+    if extra_album_ids:
+        logger.info(
+            "extra_albums_for_gallery",
+            n=len(extra_album_ids),
+            hint="phone photos whose albums are outside the test split",
+        )
+
+    gallery_paths_str, gallery_album_ids = _select_gallery_for_phone_eval(
+        manifest, splits, extra_album_ids=extra_album_ids
+    )
 
     logger.info(
-        "gallery_split_built",
+        "gallery_built",
         num_gallery=len(gallery_paths_str),
-        num_test_albums=len(set(gallery_album_ids)),
+        num_test_albums=len(test_album_ids_in_splits),
+        num_extra_albums=len(extra_album_ids),
     )
 
     # ── Determine device ──────────────────────────────────────────────────
