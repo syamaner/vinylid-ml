@@ -12,6 +12,14 @@
 - Results go to `results/{model_name}/{timestamp}/` with `metrics.json` and `config.json`
 - Evaluation scripts are idempotent — same config + seed = identical results
 
+## Training & Performance Guardrails
+- Validate every new CLI/config argument explicitly, including allowed ranges and invalid argument combinations. Fail with clear user-facing errors instead of relying on downstream framework exceptions.
+- Do not assume training, validation, and test DataLoaders should share the same settings. Validation/test loaders should prefer conservative defaults unless there is evidence that more aggressive settings are safe.
+- High-impact throughput knobs such as `num_workers`, `prefetch_factor`, `pin_memory`, and `persistent_workers` must be configurable. Prefer conservative defaults; aggressive settings should be opt-in or clearly justified.
+- Only use `persistent_workers=True` on long-lived DataLoaders that are reused across epochs. Do not enable it on short-lived or repeatedly recreated loaders.
+- If enabling optimizations that may reduce determinism (for example `torch.backends.cudnn.benchmark = True`), log or document that tradeoff explicitly.
+- When reporting speed or hardware comparisons, clearly label whether the comparison is apples-to-apples (same workload/config) or best-stable practical (different configs chosen for stability/throughput). Do not present mixed-config comparisons as pure hardware benchmarks.
+
 ## Dependencies
 - No commercial-license dependencies — verify before adding any new library
 - Prefer `torch.hub` or Hugging Face Hub for model loading

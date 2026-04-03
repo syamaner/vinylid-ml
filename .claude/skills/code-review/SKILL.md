@@ -58,6 +58,11 @@ Review every changed file against these criteria:
 - [ ] Experiment configs logged (model, dataset, hyperparams, hardware)
 - [ ] Metrics computed via `eval_metrics.py` — no ad-hoc calculations
 - [ ] No real-world test photo paths in shared results
+- [ ] New CLI/config args validated for ranges and invalid combinations — do not rely on `DataLoader`/PyTorch to fail later
+- [ ] Training and validation/test DataLoaders reviewed separately — no assumption that worker/prefetch settings should match
+- [ ] `persistent_workers=True` used only on long-lived loaders that are reused across epochs
+- [ ] Any determinism-reducing optimization (for example `cudnn.benchmark`) is explicitly logged or documented
+- [ ] Performance claims are labeled as apples-to-apples vs best-stable practical if configs differ
 
 ### Testing
 - [ ] New code has corresponding tests (TDD: tests written first)
