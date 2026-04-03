@@ -1,6 +1,6 @@
 # Story #15 — Real Phone Photo Evaluation (243 Labeled iPhone Photos)
 
-## Status: IN PROGRESS
+## Status: DONE
 
 ## Goal
 Evaluate all models against 243 labeled iPhone captures (194 unique albums).
@@ -30,14 +30,29 @@ Ref: Phase 2 Plan §4c, §7.
 - Branch: `feature/13-15-c2-local-features-phone-eval`
 
 ## Steps
-- [ ] Run prepare_dataset.py → generates test_complete_matched.csv
-- [ ] Run embed_gallery.py for A1-dinov2-cls, A1-dinov2-gem, A2-openclip, A4-sscd
-- [ ] Run evaluate_phone_photos.py --models A1-dinov2-cls,A1-dinov2-gem,A2-openclip,A4-sscd
-- [ ] Run evaluate_local_features.py --mode complete (C2)
-- [ ] Record results below
+- [x] Run prepare_dataset.py → generated test_complete_matched.csv
+- [x] Run embed_gallery.py for A1-dinov2-cls, A1-dinov2-gem, A2-openclip, A4-sscd
+- [x] Run evaluate_phone_photos.py --models A1-dinov2-cls,A1-dinov2-gem,A2-openclip,A4-sscd
+- [x] Run evaluate_local_features.py --mode complete (C2)
 
 ## Latest Results
-*(pending — evaluation not yet run)*
+Run: 2026-04-03T23-19-05 — RTX 4090 CUDA, 203 queries, gallery=981 (855 test + 126 extra)
+
+| Model | R@1 | R@5 | mAP@5 | MRR |
+|-------|-----|-----|-------|-----|
+| A4-sscd | **0.778** | **0.798** | **0.787** | **0.791** |
+| A1-dinov2-cls | 0.650 | 0.739 | 0.690 | n/a |
+| A2-openclip | 0.601 | 0.729 | 0.647 | n/a |
+| A1-dinov2-gem | 0.424 | 0.562 | 0.474 | n/a |
+| C2 (SuperPoint+LightGlue) | 0.621 | 0.690 | 0.647 | 0.658 |
+
+**Winner: A4-sscd** dominates phone photo retrieval (R@1=0.778).
+A4-sscd was specifically trained for cross-domain copy detection — confirms it’s the right pre-filter for C2 and the best standalone retrieval model.
+
+C2 local features score lower (R@1=0.621) than A4-sscd despite per-image matching
+due to cross-domain gap — all 9 LightGlue layers run (~350ms/match, no early exit).
+
+Results saved on remote in `results/{model_id}-phone/` and `results/phone_eval_summary.csv`.
 
 ## Notes
 - A4-sscd is the correct pre-filter for C2 cross-domain retrieval (~>90% recall@50).

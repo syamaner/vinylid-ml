@@ -1,6 +1,6 @@
 # Story #13 — C2 SuperPoint+LightGlue: Full Test-Split Evaluation
 
-## Status: IN PROGRESS
+## Status: DONE
 
 ## Goal
 Evaluate C2 (SuperPoint+LightGlue) on the 855-album test-split gallery using
@@ -25,14 +25,25 @@ Running on remote CUDA machine. Requires A4-sscd embeddings pre-computed for
 test split (`data/A4-sscd/`). Results saved to `results/C2-superpoint-lightglue/{timestamp}/`.
 
 ## Steps
-- [ ] git pull main + pip install -e .[dev] on remote
-- [ ] Run prepare_dataset.py with dataset-remote.yaml
-- [ ] Run embed_gallery.py --model A4-sscd --split test
-- [ ] Run evaluate_local_features.py --mode test --top-k 50
-- [ ] Record results below
+- [x] git pull main + pip install -e .[dev] on remote
+- [x] Run prepare_dataset.py with dataset-remote.yaml
+- [x] Run embed_gallery.py --model A4-sscd --split test
+- [x] Run evaluate_local_features.py --mode test --top-k 50
 
 ## Latest Results
-*(pending — evaluation not yet run)*
+Run: 2026-04-03T22-17-26 — RTX 4090 CUDA, PyTorch 2.5.1+cu124
+
+| Metric | Value |
+|--------|-------|
+| R@1 | 0.8749 |
+| R@5 | 0.8999 |
+| mAP@5 | 0.8862 |
+| MRR | 0.8871 |
+| Queries | 4494 |
+| Gallery | 855 |
+| Latency | 0.33s/query |
+
+Results saved to `results/C2-superpoint-lightglue/2026-04-03T22-17-26/` on remote.
 
 ## Notes
 - A4-sscd pre-filter needed because SuperPoint mean-descriptor gives only ~15%
