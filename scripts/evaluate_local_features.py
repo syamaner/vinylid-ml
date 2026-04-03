@@ -218,8 +218,9 @@ def _append_summary_csv(
     metrics: dict[str, object],
     num_gallery: int,
     num_queries: int,
+    summary_csv_name: str = "summary.csv",
 ) -> None:
-    """Append a row to ``results/summary.csv`` for cross-model comparison.
+    """Append a row to a summary CSV for cross-model comparison.
 
     Args:
         results_dir: Top-level results directory.
@@ -228,8 +229,11 @@ def _append_summary_csv(
         metrics: Metrics dict with retrieval metrics under ``"retrieval"`` key.
         num_gallery: Number of gallery items.
         num_queries: Number of query items.
+        summary_csv_name: Filename for the summary CSV within ``results_dir``.
+            Defaults to ``"summary.csv"``; use ``"phone_eval_summary.csv"``
+            for complete-mode runs to keep phone-photo metrics separate.
     """
-    summary_path = results_dir / "summary.csv"
+    summary_path = results_dir / summary_csv_name
     write_header = not summary_path.exists()
 
     retrieval = metrics.get("retrieval", {})
@@ -374,6 +378,7 @@ def _mode_sample(
     top_k_sample: int = 50,
     precompute_gallery_tensors: bool = False,
     suppress_per_query_csv: bool = False,
+    eval_mode: str = "sample",
 ) -> None:
     """Run --mode sample evaluation.
 
@@ -410,6 +415,11 @@ def _mode_sample(
         suppress_per_query_csv: If true, skip writing ``per_query.csv``. Set this
             for ``--mode complete`` to avoid writing phone photo filenames to disk
             (privacy guardrail).
+        eval_mode: Label written to ``metrics.json``, ``config.json``, and the
+            console banner.  Also controls the summary CSV target — ``"sample"``
+            appends to ``summary.csv``; ``"complete"`` appends to
+            ``phone_eval_summary.csv`` so phone-photo results are kept separate
+            from gallery-split sample results.
     """
     if not test_sample_matched_csv.exists():
         logger.error("sample_csv_not_found", path=str(test_sample_matched_csv))
@@ -642,10 +652,10 @@ def _mode_sample(
     run_dir.mkdir(parents=True, exist_ok=True)
     _save_run_results(
         run_dir,
-        {"retrieval": metrics_dict, "mode": "sample"},
+        {"retrieval": metrics_dict, "mode": eval_mode},
         {
             "model_id": LOCAL_FEATURE_MODEL_ID,
-            "mode": "sample",
+            "mode": eval_mode,
             "timestamp": timestamp,
             "num_gallery": len(gallery_paths),
             "num_queries": num_valid,
@@ -664,6 +674,9 @@ def _mode_sample(
             writer.writeheader()
             writer.writerows(per_query_rows)
 
+    _summary_csv = (
+        "phone_eval_summary.csv" if eval_mode == "complete" else "summary.csv"
+    )
     _append_summary_csv(
         results_dir,
         LOCAL_FEATURE_MODEL_ID,
@@ -671,10 +684,11 @@ def _mode_sample(
         {"retrieval": metrics_dict},
         len(gallery_paths),
         num_valid,
+        summary_csv_name=_summary_csv,
     )
 
     print(
-        f"\nC2 SuperPoint+LightGlue (sample mode, top-{top_k_sample} pre-filter):\n"
+        f"\nC2 SuperPoint+LightGlue ({eval_mode} mode, top-{top_k_sample} pre-filter):\n"
         f"  R@1={metrics_dict['recall_at_1']:.3f}  "
         f"R@5={metrics_dict['recall_at_5']:.3f}  "
         f"mAP@5={metrics_dict['map_at_5']:.3f}  "
@@ -1083,6 +1097,7 @@ def main(argv: list[str] | None = None) -> None:
             top_k_sample=args.top_k_sample,
             precompute_gallery_tensors=args.precompute_gallery_tensors,
             suppress_per_query_csv=True,
+            eval_mode="complete",
         )
 
     elif args.mode == "test":
