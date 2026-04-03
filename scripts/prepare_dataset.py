@@ -380,10 +380,13 @@ def _load_cover_types(db_path: Path) -> dict[str, str]:
         cursor.execute("SELECT ReleaseId, CoverType, Path FROM Covers")
         rows = cursor.fetchall()
     except sqlite3.OperationalError as exc:
+        error_msg = str(exc)
+        if "no such table: covers" not in error_msg.lower():
+            raise
         logger.warning(
             "covers_table_unavailable",
             db_path=str(db_path),
-            error=str(exc),
+            error=error_msg,
             hint="CoverType metadata will be set to 'Unknown' for all images",
         )
         rows = []

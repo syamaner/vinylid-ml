@@ -46,6 +46,7 @@ import torch
 import yaml
 from numpy.typing import NDArray
 from PIL import Image as PILImage
+from PIL import ImageOps
 
 from vinylid_ml.dataset import load_manifest, load_splits
 from vinylid_ml.gallery import load_embeddings
@@ -521,8 +522,15 @@ def _mode_sample(
         query_labels.append(label)
 
         try:
-            with PILImage.open(photo_path) as _img:
-                photo_img = _img.convert("RGB")
+            # Apply EXIF orientation and strip metadata in-memory so portrait
+            # iPhone photos are correctly oriented. Pixel-only copy ensures
+            # no metadata is forwarded to SuperPoint / SSCD.
+            with PILImage.open(photo_path) as _raw:
+                _oriented = ImageOps.exif_transpose(_raw) or _raw
+                _oriented.load()
+                _clean = PILImage.new(_oriented.mode, _oriented.size)
+                _clean.paste(_oriented)
+            photo_img = _clean.convert("RGB")
             query_feat = matcher.extract_feature(photo_img)
         except (FileNotFoundError, RuntimeError, OSError) as exc:
             logger.warning("sample_photo_error", photo=filename, error=str(exc))

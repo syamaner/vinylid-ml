@@ -16,8 +16,7 @@ Usage::
 
     python scripts/evaluate_phone_photos.py \\
         --config configs/dataset.yaml \\
-        --models A1-dinov2-cls,A1-dinov2-gem,A2-openclip,A4-sscd \\
-        --batch-size 32
+        --models A1-dinov2-cls,A1-dinov2-gem,A2-openclip,A4-sscd
 """
 
 # pyright: reportUnknownMemberType=false
@@ -212,6 +211,7 @@ def evaluate_model(
     data_dir: Path,
     gallery_paths_str: list[str],
     gallery_album_ids: list[str],
+    gallery_root: Path,
     results_dir: Path,
     timestamp: str,
     match_score_min: int,
@@ -226,6 +226,9 @@ def evaluate_model(
         data_dir: Data directory with pre-computed gallery embeddings.
         gallery_paths_str: Ordered list of gallery image path strings.
         gallery_album_ids: Album IDs aligned with gallery_paths_str.
+        gallery_root: Absolute gallery root path.  Used to resolve relative
+            ``image_path`` strings from the manifest when doing on-the-fly
+            embedding of extra (non-precomputed) gallery albums.
         results_dir: Top-level results directory.
         timestamp: ISO-style timestamp string.
         match_score_min: Minimum fuzzy-match score to include a photo.
@@ -275,8 +278,14 @@ def evaluate_model(
             n_cached += 1
         else:
             # Extra album not in pre-computed embeddings — embed on-the-fly.
+            # Resolve relative paths against gallery_root (manifest paths are
+            # absolute when produced by prepare_dataset.py but may be relative
+            # in test/dev environments).
+            gpath_resolved = (
+                Path(gpath) if Path(gpath).is_absolute() else gallery_root / gpath
+            )
             try:
-                with PILImage.open(gpath) as img:
+                with PILImage.open(gpath_resolved) as img:
                     img.load()
                     clean = PILImage.new(img.mode, img.size)
                     clean.paste(img)
@@ -285,7 +294,7 @@ def evaluate_model(
                 emb = loaded_model.embed(t.unsqueeze(0)).numpy()[0].astype(np.float32)
                 n_live += 1
             except (OSError, ValueError, RuntimeError) as exc:
-                logger.debug("extra_gallery_embed_error", path=gpath, error=str(exc))
+                logger.debug("extra_gallery_embed_error", path=str(gpath_resolved), error=str(exc))
                 continue
         gallery_embeddings.append(emb)
         valid_gallery_paths.append(gpath)
@@ -594,6 +603,7 @@ def main(argv: list[str] | None = None) -> None:
                 data_dir=data_dir,
                 gallery_paths_str=gallery_paths_str,
                 gallery_album_ids=gallery_album_ids,
+                gallery_root=gallery_root,
                 results_dir=results_dir,
                 timestamp=timestamp,
                 match_score_min=args.match_score_min,
