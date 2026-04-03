@@ -372,6 +372,7 @@ def _mode_sample(
     sample_gallery_limit: int | None = None,
     top_k_sample: int = 50,
     precompute_gallery_tensors: bool = False,
+    suppress_per_query_csv: bool = False,
 ) -> None:
     """Run --mode sample evaluation.
 
@@ -405,6 +406,9 @@ def _mode_sample(
             SSCD model unavailable.  0 = full pairwise (default: 50).
         precompute_gallery_tensors: If true, prepare all gallery tensors once on
             device before query matching. This is faster but uses more memory.
+        suppress_per_query_csv: If true, skip writing ``per_query.csv``. Set this
+            for ``--mode complete`` to avoid writing phone photo filenames to disk
+            (privacy guardrail).
     """
     if not test_sample_matched_csv.exists():
         logger.error("sample_csv_not_found", path=str(test_sample_matched_csv))
@@ -643,8 +647,8 @@ def _mode_sample(
         },
     )
 
-    # Per-query CSV
-    if per_query_rows:
+    # Per-query CSV — suppressed in complete mode to protect phone photo filenames.
+    if per_query_rows and not suppress_per_query_csv:
         per_query_path = run_dir / "per_query.csv"
         fieldnames = ["filename", "true_album_id", "top1_album_id", "top1_matches", "correct"]
         with per_query_path.open("w", newline="") as f:
@@ -964,9 +968,11 @@ def main(argv: list[str] | None = None) -> None:
     if not test_sample_dir.is_absolute():
         test_sample_dir = (config_dir / test_sample_dir).resolve()
 
-    test_complete_dir = Path(str(config["paths"].get("test_complete", "")))
-    if str(test_complete_dir) and not test_complete_dir.is_absolute():
-        test_complete_dir = (config_dir / test_complete_dir).resolve()
+    _tc_raw = config["paths"].get("test_complete")
+    test_complete_dir: Path | None = None
+    if _tc_raw is not None and str(_tc_raw).strip():
+        _tc_path = Path(str(_tc_raw))
+        test_complete_dir = _tc_path if _tc_path.is_absolute() else (config_dir / _tc_path).resolve()
 
     data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
@@ -1037,11 +1043,16 @@ def main(argv: list[str] | None = None) -> None:
                 hint="Run prepare_dataset.py first to generate test_complete_matched.csv",
             )
             sys.exit(1)
-        if not str(test_complete_dir) or not test_complete_dir.exists():
+        if test_complete_dir is None:
+            logger.error(
+                "test_complete_path_not_configured",
+                hint="Set paths.test_complete in your dataset config",
+            )
+            sys.exit(1)
+        if not test_complete_dir.exists():
             logger.error(
                 "test_complete_dir_not_found",
                 path=str(test_complete_dir),
-                hint="Set paths.test_complete in your dataset config",
             )
             sys.exit(1)
         run_dir = results_dir / f"{LOCAL_FEATURE_MODEL_ID}-phone" / timestamp
@@ -1063,6 +1074,7 @@ def main(argv: list[str] | None = None) -> None:
             sample_gallery_limit=args.sample_gallery_limit,
             top_k_sample=args.top_k_sample,
             precompute_gallery_tensors=args.precompute_gallery_tensors,
+            suppress_per_query_csv=True,
         )
 
     elif args.mode == "test":

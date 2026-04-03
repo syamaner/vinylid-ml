@@ -40,8 +40,10 @@ import torch
 import yaml
 from numpy.typing import NDArray
 from PIL import Image as PILImage
+from PIL import ImageOps
 
 from vinylid_ml.dataset import load_manifest, load_splits
+from vinylid_ml.eval_metrics import RetrievalMetrics, compute_retrieval_metrics
 from vinylid_ml.gallery import load_embeddings
 from vinylid_ml.models import ALL_MODEL_IDS, EmbeddingModel
 from vinylid_ml.models import create_model as _create_model
@@ -90,6 +92,9 @@ def _load_phone_photo_stripped(photo_path: Path) -> PILImage.Image:
         OSError: If the file cannot be opened.
     """
     with PILImage.open(photo_path) as img:
+        # Apply EXIF orientation before stripping so iPhone photos are correctly
+        # oriented (EXIF tag 274 rotates/flips many phone captures).
+        img = ImageOps.exif_transpose(img) or img
         img.load()
         clean = PILImage.new(img.mode, img.size)
         clean.paste(img)
@@ -145,55 +150,6 @@ def _select_gallery_for_phone_eval(
     return gallery_paths, gallery_album_ids
 
 
-def _compute_metrics(
-    score_matrix: NDArray[np.float32],
-    query_labels: NDArray[np.intp],
-    gallery_labels: NDArray[np.intp],
-) -> dict[str, float]:
-    """Compute R@1, R@5, mAP@5, MRR from a retrieval score matrix.
-
-    Args:
-        score_matrix: Shape ``(num_queries, num_gallery)``. Higher = better match.
-        query_labels: Shape ``(num_queries,)``.
-        gallery_labels: Shape ``(num_gallery,)``.
-
-    Returns:
-        Dict with ``recall_at_1``, ``recall_at_5``, ``map_at_5``, ``mrr``.
-    """
-    sorted_idx = np.argsort(-score_matrix, axis=1)
-    sorted_labels = gallery_labels[sorted_idx]
-    matches = sorted_labels == query_labels[:, np.newaxis]
-
-    r_at_1 = float(matches[:, :1].any(axis=1).mean())
-    r_at_5 = float(matches[:, :5].any(axis=1).mean())
-
-    k_max = min(5, matches.shape[1])
-    ap_values: list[float] = []
-    for i in range(len(query_labels)):
-        ap = 0.0
-        n_hits = 0
-        for k in range(k_max):
-            if matches[i, k]:
-                n_hits += 1
-                ap += n_hits / (k + 1)
-        ap_values.append(ap / n_hits if n_hits > 0 else 0.0)
-    map_at_5 = float(np.mean(ap_values))
-
-    mrr_values: list[float] = []
-    for i in range(len(query_labels)):
-        hit_positions = np.where(matches[i])[0]
-        if len(hit_positions) > 0:
-            mrr_values.append(1.0 / (int(hit_positions[0]) + 1))
-        else:
-            mrr_values.append(0.0)
-    mrr = float(np.mean(mrr_values))
-
-    return {
-        "recall_at_1": r_at_1,
-        "recall_at_5": r_at_5,
-        "map_at_5": map_at_5,
-        "mrr": mrr,
-    }
 
 
 def _append_summary_csv(
@@ -259,8 +215,6 @@ def evaluate_model(
     results_dir: Path,
     timestamp: str,
     match_score_min: int,
-    batch_size: int,
-    device: torch.device,
     model: object = None,  # pre-loaded model; loaded lazily if None
 ) -> dict[str, object]:
     """Evaluate a single global embedding model against phone photos.
@@ -275,8 +229,6 @@ def evaluate_model(
         results_dir: Top-level results directory.
         timestamp: ISO-style timestamp string.
         match_score_min: Minimum fuzzy-match score to include a photo.
-        batch_size: Embedding batch size (unused for now — phones embedded 1-by-1).
-        device: Torch device.
 
     Returns:
         Metrics dict with ``"retrieval"`` sub-dict.
@@ -291,7 +243,7 @@ def evaluate_model(
             "gallery_embeddings_not_found",
             model_id=model_id,
             data_dir=str(data_dir),
-            hint="Run embed_gallery.py --model {model_id} --split test first",
+            hint=f"Run embed_gallery.py --model {model_id} --split test first",
         )
         raise
 
@@ -426,20 +378,19 @@ def evaluate_model(
     num_queries = len(query_labels)
     total_elapsed = time.monotonic() - t0
 
-    # ── Cosine similarity + metrics ───────────────────────────────────────
+    # ── Cosine similarity + metrics ──────────────────────────────────────────────
     score_matrix = query_matrix @ gallery_matrix.T
-    metrics = _compute_metrics(score_matrix, query_labels, gallery_labels)
-    metrics["num_queries"] = num_queries
-    metrics["num_gallery"] = num_gallery
+    ret: RetrievalMetrics = compute_retrieval_metrics(score_matrix, query_labels, gallery_labels)
+    metrics: dict[str, float | int] = ret.to_dict()
     metrics["latency_per_query_s"] = round(total_elapsed / num_queries, 3)
 
     logger.info(
         "model_results",
         model_id=model_id,
-        R_at_1=round(metrics["recall_at_1"], 4),
-        R_at_5=round(metrics["recall_at_5"], 4),
-        mAP_at_5=round(metrics["map_at_5"], 4),
-        MRR=round(metrics["mrr"], 4),
+        R_at_1=round(float(metrics["recall_at_1"]), 4),
+        R_at_5=round(float(metrics["recall_at_5"]), 4),
+        mAP_at_5=round(float(metrics["map_at_5"]), 4),
+        MRR=round(float(metrics["mrr"]), 4),
         num_queries=num_queries,
         num_gallery=num_gallery,
     )
@@ -455,7 +406,7 @@ def evaluate_model(
         "git_sha": _get_git_sha(),
         "num_gallery": num_gallery,
         "num_queries": num_queries,
-        "retrieval": metrics,
+        "retrieval": dict(metrics),
     }
     with (run_dir / "metrics.json").open("w") as f:
         json.dump(out_metrics, f, indent=2)
@@ -476,19 +427,19 @@ def evaluate_model(
         results_dir,
         model_id,
         timestamp,
-        {"retrieval": metrics},
+        {"retrieval": dict(metrics)},
         num_gallery,
         num_queries,
     )
 
     print(
         f"\n{model_id} (phone photos):\n"
-        f"  R@1={metrics['recall_at_1']:.3f}  "
-        f"R@5={metrics['recall_at_5']:.3f}  "
-        f"mAP@5={metrics['map_at_5']:.3f}  "
-        f"MRR={metrics['mrr']:.3f}\n"
+        f"  R@1={float(metrics['recall_at_1']):.3f}  "
+        f"R@5={float(metrics['recall_at_5']):.3f}  "
+        f"mAP@5={float(metrics['map_at_5']):.3f}  "
+        f"MRR={float(metrics['mrr']):.3f}\n"
         f"  queries={num_queries}  gallery={num_gallery}  "
-        f"lat={metrics['latency_per_query_s']:.2f}s/query\n"
+        f"lat={float(metrics['latency_per_query_s']):.2f}s/query\n"
         f"  Results: {run_dir}\n"
     )
 
@@ -530,12 +481,6 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=_DEFAULT_MATCH_SCORE_MIN,
         help=f"Minimum fuzzy-match score for photo inclusion (default: {_DEFAULT_MATCH_SCORE_MIN}).",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=32,
-        help="Embedding batch size (default: 32).",
     )
     parser.add_argument(
         "--results-dir",
@@ -638,16 +583,7 @@ def main(argv: list[str] | None = None) -> None:
         num_extra_albums=len(extra_album_ids),
     )
 
-    # ── Determine device ──────────────────────────────────────────────────
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-    logger.info("device_selected", device=str(device))
-
-    # ── Evaluate each model ───────────────────────────────────────────────
+    # ── Evaluate each model ──────────────────────────────────────────────
     all_results: list[dict[str, object]] = []
     for model_id in model_ids:
         try:
@@ -661,8 +597,6 @@ def main(argv: list[str] | None = None) -> None:
                 results_dir=results_dir,
                 timestamp=timestamp,
                 match_score_min=args.match_score_min,
-                batch_size=args.batch_size,
-                device=device,
             )
             all_results.append(result)
         except (FileNotFoundError, ValueError) as exc:
