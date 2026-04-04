@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zero-Shot Evaluation — Model Comparison</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2em;background:#fafafa;color:#333}
+h1{margin-bottom:.25em}p.subtitle{color:#666;margin-top:0}
+table{border-collapse:collapse;width:100%;background:#fff;
+      box-shadow:0 1px 4px rgba(0,0,0,.12);border-radius:4px;overflow:hidden}
+th{background:#2c3e50;color:#fff;padding:10px 14px;text-align:left;
+   white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid #eee;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f0f4f8}
+.r1-green{background:#d4edda;font-weight:700}
+.r1-amber{background:#fff3cd;font-weight:700}
+.r1-red{background:#f8d7da;font-weight:700}
+.v-ok{color:#155724;font-weight:700}
+.v-likely{color:#856404;font-weight:700}
+.v-req{color:#721c24;font-weight:700}
+.na{color:#bbb}
+</style>
+</head>
+<body>
+<h1>Zero-Shot Evaluation — Model Comparison</h1>
+<p class="subtitle">
+  Decision criteria:&nbsp;
+  <strong style="color:#155724">Recall@1 &ge; 90%</strong> → zero-shot sufficient
+  &nbsp;|&nbsp;
+  <strong style="color:#856404">80-90%</strong> → fine-tuning likely needed
+  &nbsp;|&nbsp;
+  <strong style="color:#721c24">&lt;80%</strong> → fine-tuning required
+</p>
+<table>
+<thead>
+<tr><th>Model</th><th>Recall@1</th><th>Recall@5</th><th>mAP@5</th><th>MRR</th><th>Gallery</th><th>Queries</th><th>p50&nbsp;ms</th><th>p95&nbsp;ms</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr><td>D1-sscd-lightglue-k20</td><td class="r1-amber">0.8725</td><td>0.8950</td><td>0.8829</td><td>0.8841</td><td>855</td><td>4494</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>D1-sscd-lightglue-k10</td><td class="r1-amber">0.8694</td><td>0.8910</td><td>0.8793</td><td>0.8808</td><td>855</td><td>4494</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>D1-sscd-lightglue-k5</td><td class="r1-amber">0.8676</td><td>0.8896</td><td>0.8778</td><td>0.8795</td><td>855</td><td>4494</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+</tbody>
+</table>
+</body>
+</html>

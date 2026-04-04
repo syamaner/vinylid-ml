@@ -1,0 +1,17 @@
+{
+  "model_id": "A2-openclip",
+  "eval_type": "phone_photos_sample",
+  "eval_set": "sample",
+  "timestamp": "2026-04-04T00-57-21",
+  "git_sha": null,
+  "num_gallery": 870,
+  "num_queries": 50,
+  "retrieval": {
+    "recall_at_1": 0.42,
+    "recall_at_5": 0.56,
+    "map_at_5": 0.4766666666666666,
+    "mrr": 0.49501239011243925,
+    "num_queries": 50,
+    "latency_per_query_s": 0.028
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "best_val_recall_at_1": 0.7944,
+  "best_epoch": 0,
+  "total_epochs_trained": 1,
+  "early_stopped": false,
+  "final_epoch": {
+    "epoch": 0,
+    "train_loss": 1.957309,
+    "val_recall_at_1": 0.7944,
+    "val_recall_at_5": 0.8434,
+    "val_map_at_5": 0.8143,
+    "val_mrr": 0.8185,
+    "lr": 0.0,
+    "epoch_time_s": 100.3
+  },
+  "training_log": [
+    {
+      "epoch": 0,
+      "train_loss": 1.957309,
+      "val_recall_at_1": 0.7944,
+      "val_recall_at_5": 0.8434,
+      "val_map_at_5": 0.8143,
+      "val_mrr": 0.8185,
+      "lr": 0.0,
+      "epoch_time_s": 100.3
+    }
+  ]
+}

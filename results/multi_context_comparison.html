@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VinylID — Sprint 3 Multi-Context Model Comparison</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2em;background:#fafafa;color:#333}
+h1{margin-bottom:.25em}h2{margin-top:2em;color:#2c3e50}p.subtitle{color:#666;margin-top:0}
+table{border-collapse:collapse;width:100%;background:#fff;
+      box-shadow:0 1px 4px rgba(0,0,0,.12);border-radius:4px;overflow:hidden;margin-bottom:1.5em}
+th{background:#2c3e50;color:#fff;padding:10px 14px;text-align:left;white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid #eee;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f0f4f8}
+.r1-green{background:#d4edda;font-weight:700}
+.r1-amber{background:#fff3cd;font-weight:700}
+.r1-red{background:#f8d7da;font-weight:700}
+.v-ok{color:#155724;font-weight:700}
+.v-likely{color:#856404;font-weight:700}
+.v-req{color:#721c24;font-weight:700}
+.na{color:#bbb}
+.ctx-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.8em;
+           background:#e3f2fd;color:#1565c0;font-weight:600;margin-left:.3em}
+</style>
+</head>
+<body>
+<h1>VinylID — Sprint 3 Multi-Context Model Comparison</h1>
+<p class="subtitle">
+  Decision criteria:&nbsp;
+  <strong style="color:#155724">Recall@1 &ge; 90%</strong> → zero-shot sufficient
+  &nbsp;|&nbsp;
+  <strong style="color:#856404">80-90%</strong> → fine-tuning likely needed
+  &nbsp;|&nbsp;
+  <strong style="color:#721c24">&lt;80%</strong> → fine-tuning required
+</p>
+<h2>Test-Split Evaluation (A/B/C/D models)</h2>
+<p style="color:#555;margin-top:-.5em">Augmented gallery/query split: 855 gallery images, ~4 500 queries. All models evaluated on identical data. D1-sscd-lightglue-k* rows show K-sweep results for the D1 hybrid pipeline (A4-sscd + LightGlue).</p>
+<table>
+<thead>
+<tr><th>Model</th><th>Recall@1</th><th>Recall@5</th><th>mAP@5</th><th>MRR</th><th>Gallery</th><th>Queries</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr><td>D1-sscd-lightglue-k20</td><td class="r1-amber">0.8725</td><td>0.8950</td><td>0.8829</td><td>0.8841</td><td>855</td><td>4494</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>D1-sscd-lightglue-k10</td><td class="r1-amber">0.8694</td><td>0.8910</td><td>0.8793</td><td>0.8808</td><td>855</td><td>4494</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>D1-sscd-lightglue-k5</td><td class="r1-amber">0.8676</td><td>0.8896</td><td>0.8778</td><td>0.8795</td><td>855</td><td>4494</td><td class="v-likely">fine-tuning likely needed</td></tr>
+</tbody>
+</table>
+
+<h2>Phone Photo Evaluation — Complete Set</h2>
+<p style="color:#555;margin-top:-.5em">203 real-world iPhone captures vs 981 gallery images. Cross-domain challenge (phone photo → catalogue scan). Only global-embedding models (A-series) evaluated here.</p>
+<table>
+<thead>
+<tr><th>Model</th><th>Recall@1</th><th>Recall@5</th><th>mAP@5</th><th>MRR</th><th>Gallery</th><th>Queries</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr><td>A4-sscd</td><td class="r1-red">0.7783</td><td>0.7980</td><td>0.7874</td><td>0.7915</td><td>981</td><td>203</td><td class="v-req">fine-tuning required</td></tr>
+<tr><td>A1-dinov2-cls</td><td class="r1-red">0.6502</td><td>0.7389</td><td>0.6898</td><td>0.6954</td><td>981</td><td>203</td><td class="v-req">fine-tuning required</td></tr>
+<tr><td>A2-openclip</td><td class="r1-red">0.6010</td><td>0.7291</td><td>0.6472</td><td>0.6619</td><td>981</td><td>203</td><td class="v-req">fine-tuning required</td></tr>
+<tr><td>A1-dinov2-gem</td><td class="r1-red">0.4236</td><td>0.5616</td><td>0.4744</td><td>0.4871</td><td>981</td><td>203</td><td class="v-req">fine-tuning required</td></tr>
+</tbody>
+</table>
+
+<h2>Phone Photo Evaluation — Sample Set (#53)</h2>
+<p style="color:#555;margin-top:-.5em">55-photo / 50-matched-query sample — same dataset used by C2 sample-mode. Enables direct apples-to-apples comparison with C2 LightGlue (see summary.csv).</p>
+<table>
+<thead>
+<tr><th>Model</th><th>Recall@1</th><th>Recall@5</th><th>mAP@5</th><th>MRR</th><th>Gallery</th><th>Queries</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr><td>A4-sscd</td><td class="r1-amber">0.8800</td><td>0.9600</td><td>0.9083</td><td>0.9090</td><td>870</td><td>50</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A1-dinov2-cls</td><td class="r1-red">0.5000</td><td>0.6000</td><td>0.5417</td><td>0.5534</td><td>870</td><td>50</td><td class="v-req">fine-tuning required</td></tr>
+<tr><td>A2-openclip</td><td class="r1-red">0.4200</td><td>0.5600</td><td>0.4767</td><td>0.4950</td><td>870</td><td>50</td><td class="v-req">fine-tuning required</td></tr>
+<tr><td>A1-dinov2-gem</td><td class="r1-red">0.3600</td><td>0.5000</td><td>0.4090</td><td>0.4267</td><td>870</td><td>50</td><td class="v-req">fine-tuning required</td></tr>
+</tbody>
+</table>
+</body>
+</html>

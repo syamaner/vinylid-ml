@@ -1,0 +1,31 @@
+{
+  "backbone": "sscd",
+  "loss": "supcon",
+  "projection_dim": 512,
+  "num_classes": 6841,
+  "lr": 0.0001,
+  "weight_decay": 0.0001,
+  "epochs": 50,
+  "batch_size": 32,
+  "seed": 42,
+  "subset_albums": null,
+  "freeze_epochs": 5,
+  "backbone_lr_mult": 0.1,
+  "llrd_decay": null,
+  "unfreeze_blocks": null,
+  "patience": 10,
+  "margin": 0.5,
+  "scale": 64.0,
+  "alpha": 32.0,
+  "temperature": 0.07,
+  "n_views": 2,
+  "input_size": 224,
+  "device": "mps",
+  "git_sha": "663231a7288002f84ca4a1a49af035ef36254d83",
+  "manifest_hash": "bc67a55a2cb1",
+  "extra": {
+    "torch_version": "2.10.0",
+    "model_name": "B3-sscd-supcon",
+    "timestamp": "2026-04-02T22-17-48"
+  }
+}

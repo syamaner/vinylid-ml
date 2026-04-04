@@ -1,0 +1,13 @@
+{
+  "retrieval": {
+    "recall_at_1": 0.8693813974187806,
+    "recall_at_5": 0.8909657320872274,
+    "map_at_5": 0.8793428274736685,
+    "mrr": 0.8808285002765631,
+    "num_queries": 4494,
+    "num_gallery": 855,
+    "latency_per_query_s": 0.096
+  },
+  "mode": "test",
+  "run_label": "D1-sscd-lightglue-k10"
+}

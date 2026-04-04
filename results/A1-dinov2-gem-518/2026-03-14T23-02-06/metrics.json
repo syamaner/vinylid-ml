@@ -1,0 +1,27 @@
+{
+  "model_id": "A1-dinov2-gem-518",
+  "split": "test",
+  "timestamp": "2026-03-14T23-02-06",
+  "git_sha": "256de393483049fe924f852089fbdff5188de9eb",
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "retrieval": {
+    "recall_at_1": 0.8275635407537248,
+    "recall_at_5": 0.8819018404907976,
+    "map_at_5": 0.8485210341805433,
+    "mrr": 0.8519747871022859,
+    "num_queries": 4564
+  },
+  "stratified": {
+    "by_album_image_count": {
+      "2-5": 0.794921875,
+      "6+": 0.8423728813559322
+    },
+    "by_resolution_bucket": {
+      "<400px": 0.7656765676567657,
+      "400-800px": 0.8061389337641357,
+      "800+px": 0.8598169717138103
+    },
+    "by_augmentation_type": {}
+  }
+}

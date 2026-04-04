@@ -1,0 +1,27 @@
+{
+  "model_id": "B2c-dinov2-supcon",
+  "split": "test",
+  "timestamp": "2026-03-29T09-21-45",
+  "git_sha": "72225cffc052bda65f6e208b30a3573146e469af",
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "retrieval": {
+    "recall_at_1": 0.8794916739702016,
+    "recall_at_5": 0.9053461875547765,
+    "map_at_5": 0.8903337715454279,
+    "mrr": 0.8924696073373687,
+    "num_queries": 4564
+  },
+  "stratified": {
+    "by_album_image_count": {
+      "2-5": 0.83203125,
+      "6+": 0.8977401129943503
+    },
+    "by_resolution_bucket": {
+      "<400px": 0.8283828382838284,
+      "400-800px": 0.8540656973613355,
+      "800+px": 0.9122296173044925
+    },
+    "by_augmentation_type": {}
+  }
+}

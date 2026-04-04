@@ -40,7 +40,15 @@ env/
 test_photos/
 
 # Experiment outputs (uploaded to HF Hub, not git)
-results/
+# Large binary artifacts inside results/ — use HF Hub for these
+results/**/*.pt
+results/**/*.pth
+results/**/*.npy
+results/**/*.npz
+results/**/*.safetensors
+results/**/*.bin
+results/**/embeddings/
+# Everything else in results/ (metrics.json, config.json, CSVs, HTMLs) is tracked
 
 # CoreML models and indexes (uploaded to HF Hub, not git)
 coreml/

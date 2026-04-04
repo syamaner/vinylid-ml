@@ -1,0 +1,102 @@
+[
+  {
+    "epoch": 0,
+    "train_loss": 9.943686,
+    "val_recall_at_1": 0.1522,
+    "val_recall_at_5": 0.2603,
+    "val_map_at_5": 0.1893,
+    "val_mrr": 0.2105,
+    "lr": 9.755e-05,
+    "epoch_time_s": 125.3
+  },
+  {
+    "epoch": 1,
+    "train_loss": 9.163335,
+    "val_recall_at_1": 0.1492,
+    "val_recall_at_5": 0.251,
+    "val_map_at_5": 0.1851,
+    "val_mrr": 0.2062,
+    "lr": 9.045e-05,
+    "epoch_time_s": 124.9
+  },
+  {
+    "epoch": 2,
+    "train_loss": 8.900773,
+    "val_recall_at_1": 0.1747,
+    "val_recall_at_5": 0.2913,
+    "val_map_at_5": 0.2154,
+    "val_mrr": 0.2392,
+    "lr": 7.939e-05,
+    "epoch_time_s": 124.0
+  },
+  {
+    "epoch": 3,
+    "train_loss": 8.732668,
+    "val_recall_at_1": 0.1875,
+    "val_recall_at_5": 0.3104,
+    "val_map_at_5": 0.2319,
+    "val_mrr": 0.2555,
+    "lr": 6.545e-05,
+    "epoch_time_s": 124.7
+  },
+  {
+    "epoch": 4,
+    "train_loss": 8.58541,
+    "val_recall_at_1": 0.236,
+    "val_recall_at_5": 0.3822,
+    "val_map_at_5": 0.2885,
+    "val_mrr": 0.3099,
+    "lr": 5e-05,
+    "epoch_time_s": 125.7
+  },
+  {
+    "epoch": 5,
+    "train_loss": 8.47871,
+    "val_recall_at_1": 0.2475,
+    "val_recall_at_5": 0.395,
+    "val_map_at_5": 0.3001,
+    "val_mrr": 0.3229,
+    "lr": 3.455e-05,
+    "epoch_time_s": 124.7
+  },
+  {
+    "epoch": 6,
+    "train_loss": 8.367486,
+    "val_recall_at_1": 0.2724,
+    "val_recall_at_5": 0.4161,
+    "val_map_at_5": 0.3253,
+    "val_mrr": 0.3457,
+    "lr": 2.061e-05,
+    "epoch_time_s": 124.0
+  },
+  {
+    "epoch": 7,
+    "train_loss": 8.257312,
+    "val_recall_at_1": 0.2831,
+    "val_recall_at_5": 0.4281,
+    "val_map_at_5": 0.3359,
+    "val_mrr": 0.3563,
+    "lr": 9.55e-06,
+    "epoch_time_s": 126.1
+  },
+  {
+    "epoch": 8,
+    "train_loss": 8.193615,
+    "val_recall_at_1": 0.2894,
+    "val_recall_at_5": 0.4383,
+    "val_map_at_5": 0.3428,
+    "val_mrr": 0.3626,
+    "lr": 2.45e-06,
+    "epoch_time_s": 124.6
+  },
+  {
+    "epoch": 9,
+    "train_loss": 8.146522,
+    "val_recall_at_1": 0.3033,
+    "val_recall_at_5": 0.4541,
+    "val_map_at_5": 0.3584,
+    "val_mrr": 0.3785,
+    "lr": 0.0,
+    "epoch_time_s": 124.4
+  }
+]
