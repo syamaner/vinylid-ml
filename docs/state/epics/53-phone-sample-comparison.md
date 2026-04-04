@@ -2,8 +2,9 @@
 
 ## Goal
 Run A1-cls, A1-gem, A2, A4 on the same 55-photo / 50-matched-query sample used
-by C2 sample-mode evaluation (story #11/#13), with the same gallery (857 images,
-match_score_min=60), to enable direct apples-to-apples comparison.
+by C2 sample-mode evaluation (story #11/#13), with the same gallery construction:
+canonical test-split images plus any extra albums referenced by the matched CSV
+(match_score_min=60), to enable direct apples-to-apples comparison.
 
 ## Status
 - [x] Code: `--eval-set sample` added to `evaluate_phone_photos.py`
@@ -26,8 +27,9 @@ python scripts/evaluate_phone_photos.py \
 ```
 
 ## Active Context
-Waiting for remote CUDA run.  After results arrive, update this file with
-Recall@1 values and compare with C2 sample-mode result (R@1=0.XXX from #11).
+Remote CUDA run is complete and results are recorded below. Current takeaway:
+A4-sscd matches the C2 sample-mode baseline on this sample (R@1=0.880), while
+A1/A2 remain meaningfully behind.
 
 ## Latest Results
 50 matched queries, 870 gallery images, match_score_min=60

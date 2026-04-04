@@ -32,8 +32,9 @@ done
 ```
 
 ## Active Context
-Waiting for remote CUDA runs.  After results arrive, update with R@1 and
-latency per K value.
+Sweep complete; results are recorded below and compared against the K=50
+reference. Current takeaway: K=10 is the recommended production setting,
+balancing recall and latency.
 
 ## Latest Results
 855 gallery, 4494 queries (full test split), RTX 4090

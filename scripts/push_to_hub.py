@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import structlog
 
@@ -108,7 +108,10 @@ def _collect_upload_pairs(
                     logger.warning("blocked_filename_skipped", path=str(local))
                     continue
                 rel = local.relative_to(results_dir)
-                pairs.append((local, f"{repo_prefix}/{rel}"))
+                # Use as_posix() to produce forward-slash paths regardless of OS;
+                # HF Hub treats backslashes as invalid path separators.
+                hub_path = str(PurePosixPath(repo_prefix) / PurePosixPath(rel.as_posix()))
+                pairs.append((local, hub_path))
 
     return pairs
 
@@ -173,30 +176,37 @@ def push_to_hub(
         )
         sys.exit(1)
 
-    # Upload files one by one so progress is visible and partial uploads succeed.
-    n_uploaded = 0
-    n_failed = 0
-    for local, hub_path in pairs:
-        try:
-            api.upload_file(
-                path_or_fileobj=str(local),
-                path_in_repo=hub_path,
-                repo_id=repo_id,
-                repo_type="model",
-                commit_message=commit_message,
-            )
-            logger.info("uploaded", local=str(local), hub_path=hub_path)
-            n_uploaded += 1
-        except Exception as exc:
-            logger.error("upload_failed", local=str(local), error=str(exc))
-            n_failed += 1
+    # Batch all files into a single commit to avoid spamming the repo history
+    # and to reduce HTTP round-trips.  CommitOperationAdd is the recommended
+    # approach for multi-file uploads via create_commit().
+    try:
+        from huggingface_hub import CommitOperationAdd
+    except ImportError:
+        logger.error("huggingface_hub_not_installed", hint="pip install huggingface-hub")
+        sys.exit(1)
+
+    operations = [
+        CommitOperationAdd(path_in_repo=hub_path, path_or_fileobj=str(local))
+        for local, hub_path in pairs
+    ]
+    logger.info("uploading_batch", n_files=len(operations), repo_id=repo_id)
+    try:
+        api.create_commit(
+            repo_id=repo_id,
+            repo_type="model",
+            operations=operations,
+            commit_message=commit_message,
+        )
+        logger.info("batch_upload_complete", n_files=len(operations))
+    except Exception as exc:
+        logger.error("batch_upload_failed", error=str(exc))
+        print(f"\nUpload failed: {exc}\n")
+        sys.exit(1)
 
     print(
-        f"\nUpload complete: {n_uploaded} uploaded, {n_failed} failed.\n"
+        f"\nUpload complete: {len(operations)} files in one commit.\n"
         f"View at: https://huggingface.co/{repo_id}/tree/main\n"
     )
-    if n_failed > 0:
-        sys.exit(1)
 
 
 def main(argv: list[str] | None = None) -> None:

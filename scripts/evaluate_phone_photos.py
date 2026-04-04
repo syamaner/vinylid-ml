@@ -12,9 +12,11 @@ Two evaluation sets are supported via ``--eval-set``:
   ``--eval-set sample``  (story #53):
     Runs against the same 55-photo / 50-matched-query sample used by C2
     sample-mode evaluation (``test_sample_matched.csv``, ``test_sample`` dir),
-    with the same gallery (857 canonical images, match_score_min=60). Enables
-    direct apples-to-apples comparison with C2 LightGlue results.  Results
-    appended to ``results/phone_sample_eval_summary.csv``.
+    using ``match_score_min=60`` and the corresponding sample-mode gallery
+    selection: the canonical test-split gallery plus any additional albums
+    referenced by the matched CSV. Enables direct apples-to-apples comparison
+    with C2 LightGlue results. Results appended to
+    ``results/phone_sample_eval_summary.csv``.
 
 Privacy guardrail: EXIF is stripped in-memory on load. No photo paths are
 written to any output file. Only aggregate metrics are reported.
