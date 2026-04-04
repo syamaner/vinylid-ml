@@ -80,6 +80,26 @@ _EVAL_SET_SAMPLE: str = "sample"
 # A3-featureprint (macOS-only, Apple Vision) is listed here but not in ALL_MODEL_IDS.
 _PHONE_EVAL_MODEL_IDS: tuple[str, ...] = (*ALL_MODEL_IDS, FEATUREPRINT_MODEL_ID)
 
+# All known canonical model IDs, ordered longest-first to avoid prefix collisions
+# when extracting a canonical model_id from a run_label (e.g. A4-sscd-tta5 -> A4-sscd).
+_KNOWN_CANONICAL_IDS: tuple[str, ...] = (
+    "A1-dinov2-cls-518",
+    "A1-dinov2-gem-518",
+    "A1-dinov2-cls",
+    "A1-dinov2-gem",
+    "A2-openclip",
+    FEATUREPRINT_MODEL_ID,
+    "A4-sscd",
+    "A5-sscd-blur",
+    "B1-mobilenet_v3_small-supcon",
+    "B2c-dinov2-supcon",
+    "B2-dinov2-supcon",
+    "B3-sscd-supcon",
+    "C2-superpoint-lightglue",
+    "C1-dinov2-patch",
+    "E1-sscd-projhead",
+)
+
 
 def _get_git_sha() -> str | None:
     """Return current git commit SHA, or None if unavailable.
@@ -177,6 +197,81 @@ def _select_gallery_for_phone_eval(
     return gallery_paths, gallery_album_ids
 
 
+def _extract_canonical_model_id(run_label: str) -> str:
+    """Extract the canonical model ID from a run label.
+
+    Run labels encode inference settings as suffixes, e.g.
+    ``"A4-sscd-tta5-aqe5a0.5"`` -> ``"A4-sscd"``.  Uses
+    ``_KNOWN_CANONICAL_IDS`` (longest-first) to find the matching prefix.
+
+    Args:
+        run_label: Run label string (may be identical to model_id for baseline runs).
+
+    Returns:
+        Canonical model ID string, or ``run_label`` unchanged if unrecognised.
+    """
+    for mid in _KNOWN_CANONICAL_IDS:
+        if (
+            run_label == mid
+            or run_label.startswith(mid + "-tta")
+            or run_label.startswith(mid + "-aqe")
+        ):
+            return mid
+    return run_label
+
+
+_SUMMARY_CSV_FIELDNAMES: tuple[str, ...] = (
+    "model_id",
+    "run_label",
+    "timestamp",
+    "recall_at_1",
+    "recall_at_5",
+    "map_at_5",
+    "mrr",
+    "num_gallery",
+    "num_queries",
+)
+
+
+def _migrate_summary_csv_if_needed(path: Path) -> None:
+    """Upgrade an 8-column summary CSV (no ``run_label``) to the 9-column schema.
+
+    Reads all existing rows, backfills ``run_label`` and splits the canonical
+    ``model_id`` from the old ``model_id`` column (which may have encoded TTA/QE
+    settings as suffixes).  Rewrites the file with the new header.  No-op if
+    the file already contains a ``run_label`` column.
+
+    Args:
+        path: Absolute path to the summary CSV file.
+    """
+    with path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        existing_fields = list(reader.fieldnames or [])
+        if "run_label" in existing_fields:
+            return  # already on new schema
+        rows = list(reader)
+
+    logger.info("migrating_summary_csv_schema", path=str(path), n_rows=len(rows))
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(_SUMMARY_CSV_FIELDNAMES))
+        writer.writeheader()
+        for r in rows:
+            old_label = r.get("model_id", "")
+            canonical = _extract_canonical_model_id(old_label)
+            writer.writerow(
+                {
+                    "model_id": canonical,
+                    "run_label": old_label,
+                    **{
+                        k: r.get(k, "")
+                        for k in _SUMMARY_CSV_FIELDNAMES
+                        if k not in ("model_id", "run_label")
+                    },
+                }
+            )
+    logger.info("summary_csv_schema_migrated", path=str(path))
+
+
 def _append_summary_csv(
     results_dir: Path,
     model_id: str,
@@ -188,6 +283,9 @@ def _append_summary_csv(
     summary_csv_name: str = "phone_eval_summary.csv",
 ) -> None:
     """Append a row to a phone evaluation summary CSV.
+
+    Automatically migrates files that use the legacy 8-column schema
+    (without ``run_label``) to the current 9-column schema before appending.
 
     Args:
         results_dir: Top-level results directory.
@@ -204,6 +302,8 @@ def _append_summary_csv(
             ``"phone_sample_eval_summary.csv"`` for sample-mode runs.
     """
     summary_path = results_dir / summary_csv_name
+    if summary_path.exists():
+        _migrate_summary_csv_if_needed(summary_path)
     write_header = not summary_path.exists()
 
     retrieval = metrics.get("retrieval", metrics)
@@ -222,19 +322,8 @@ def _append_summary_csv(
         "num_queries": num_queries,
     }
 
-    fieldnames = [
-        "model_id",
-        "run_label",
-        "timestamp",
-        "recall_at_1",
-        "recall_at_5",
-        "map_at_5",
-        "mrr",
-        "num_gallery",
-        "num_queries",
-    ]
     with summary_path.open("a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=list(_SUMMARY_CSV_FIELDNAMES))
         if write_header:
             writer.writeheader()
         writer.writerow(row)
