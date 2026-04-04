@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Evaluate SuperPoint + LightGlue local feature matching (model C2).
+"""Evaluate SuperPoint + LightGlue local feature matching (model C2 / D1 hybrid).
 
-Two evaluation modes:
+Three evaluation modes:
 
   ``--mode sample``  (primary — SIFT comparison):
     Phone-photo sample (55 photos, 50 high-confidence matched) vs 855-album
@@ -10,10 +10,25 @@ Two evaluation modes:
     LightGlue re-ranks them.  Reports R@1/R@5/mAP@5/MRR with direct SIFT
     baseline comparison.
 
-  ``--mode test``  (full test split via A4-sscd pre-filtering):
+  ``--mode test``  (full test split via A4-sscd pre-filtering — the D1 hybrid pipeline):
     4 564 query images x top-K A4-sscd candidates re-ranked by LightGlue
-    match count.  Runtime ~20 min on CPU.  Output in the same format as
+    match count.  The combination of A4-sscd global pre-filter + LightGlue
+    re-ranking is formally the **D1** hybrid pipeline.  Use ``--run-label``
+    to record results under a descriptive name (e.g. ``D1-sscd-lightglue-k50``).
+    Runtime ~20-25 min on RTX 4090 (K=50).  Output in the same format as
     ``evaluate.py``.
+
+    K-sweep example (story #21)::
+
+        for K in 5 10 20 50; do
+          python scripts/evaluate_local_features.py \\
+              --config configs/dataset-remote.yaml \\
+              --mode test --top-k $K \\
+              --run-label D1-sscd-lightglue-k${K}
+        done
+
+  ``--mode complete``  (real-world phone photos — 243 labeled):
+    Uses the complete test-complete CSV and directory.
 
 Usage::
 
@@ -21,7 +36,8 @@ Usage::
         --config configs/dataset.yaml --mode sample
 
     python scripts/evaluate_local_features.py \\
-        --config configs/dataset.yaml --mode test --top-k 50
+        --config configs/dataset.yaml --mode test --top-k 50 \\
+        --run-label D1-sscd-lightglue-k50
 """
 
 # pyright: reportUnknownMemberType=false
@@ -674,9 +690,7 @@ def _mode_sample(
             writer.writeheader()
             writer.writerows(per_query_rows)
 
-    _summary_csv = (
-        "phone_eval_summary.csv" if eval_mode == "complete" else "summary.csv"
-    )
+    _summary_csv = "phone_eval_summary.csv" if eval_mode == "complete" else "summary.csv"
     _append_summary_csv(
         results_dir,
         LOCAL_FEATURE_MODEL_ID,
@@ -718,9 +732,16 @@ def _mode_test(
     timestamp: str,
     feature_cache_dir: Path,
     top_k: int,
+    run_label: str,
     precompute_gallery_tensors: bool = False,
 ) -> None:
-    """Run --mode test evaluation (A4-sscd pre-filter + LightGlue re-rank).
+    """Run --mode test evaluation (A4-sscd pre-filter + LightGlue re-rank — D1 hybrid).
+
+    This is the formal **D1 hybrid pipeline**: A4-sscd global cosine similarity
+    selects the top-K candidates; LightGlue re-ranks them by match count.
+    ``run_label`` controls how the run is identified in summary.csv and the
+    run directory, enabling K-sweep comparisons (e.g. ``D1-sscd-lightglue-k5``,
+    ``D1-sscd-lightglue-k10``, …).
 
     Args:
         matcher: Initialised ``LocalFeatureMatcher``.
@@ -735,6 +756,9 @@ def _mode_test(
         timestamp: ISO timestamp string.
         feature_cache_dir: Directory for ``.npz`` feature cache.
         top_k: Number of A4-sscd candidates to re-rank with LightGlue.
+        run_label: Label for this run — written to summary.csv ``model_id`` column
+            and used as the run directory name.  Suggested convention:
+            ``D1-sscd-lightglue-k{top_k}`` for formal D1 K-sweep runs.
         precompute_gallery_tensors: If true, precompute gallery tensors once for
             faster matching at the cost of higher device memory usage.
     """
@@ -848,9 +872,11 @@ def _mode_test(
 
     _save_run_results(
         run_dir,
-        {"retrieval": metrics_dict, "mode": "test"},
+        {"retrieval": metrics_dict, "mode": "test", "run_label": run_label},
         {
-            "model_id": LOCAL_FEATURE_MODEL_ID,
+            "model_id": run_label,
+            "pipeline": "D1-sscd-lightglue",
+            "base_model": LOCAL_FEATURE_MODEL_ID,
             "mode": "test",
             "timestamp": timestamp,
             "top_k": top_k,
@@ -862,7 +888,7 @@ def _mode_test(
 
     _append_summary_csv(
         results_dir,
-        LOCAL_FEATURE_MODEL_ID,
+        run_label,
         timestamp,
         {"retrieval": metrics_dict},
         num_gallery,
@@ -870,7 +896,7 @@ def _mode_test(
     )
 
     print(
-        f"\nC2 SuperPoint+LightGlue (test mode, top-{top_k} pre-filter):\n"
+        f"\nD1 hybrid ({run_label}, top-{top_k} A4-sscd pre-filter + LightGlue):\n"
         f"  R@1={metrics_dict['recall_at_1']:.3f}  "
         f"R@5={metrics_dict['recall_at_5']:.3f}  "
         f"mAP@5={metrics_dict['map_at_5']:.3f}  "
@@ -969,6 +995,18 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Feature cache directory (default: <data_dir>/local_features/C2-superpoint-lightglue/).",
     )
+    parser.add_argument(
+        "--run-label",
+        type=str,
+        default=None,
+        help=(
+            "Label for this test-mode run — used as the run directory name and "
+            "model_id in summary.csv.  If omitted, defaults to "
+            "'D1-sscd-lightglue-k{top_k}' for test mode and "
+            "LOCAL_FEATURE_MODEL_ID for other modes.  "
+            "Recommended convention: 'D1-sscd-lightglue-k5', 'D1-sscd-lightglue-k10', etc."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -994,7 +1032,9 @@ def main(argv: list[str] | None = None) -> None:
     test_complete_dir: Path | None = None
     if _tc_raw is not None and str(_tc_raw).strip():
         _tc_path = Path(str(_tc_raw))
-        test_complete_dir = _tc_path if _tc_path.is_absolute() else (config_dir / _tc_path).resolve()
+        test_complete_dir = (
+            _tc_path if _tc_path.is_absolute() else (config_dir / _tc_path).resolve()
+        )
 
     data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
@@ -1013,9 +1053,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     feature_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    run_dir = results_dir / LOCAL_FEATURE_MODEL_ID / timestamp
+    # ── Resolve run label ──────────────────────────────────────────────────
+    if args.run_label is not None:
+        run_label: str = args.run_label
+    elif args.mode == "test":
+        run_label = f"D1-sscd-lightglue-k{args.top_k}"
+    else:
+        run_label = LOCAL_FEATURE_MODEL_ID
 
-    # ── Load manifest and splits ───────────────────────────────────────────
+    run_dir = results_dir / run_label / timestamp
+
+    # ── Load manifest and splits ─────────────────────────────────────────────
     manifest = load_manifest(manifest_path)
     splits = load_splits(splits_path)
 
@@ -1101,6 +1149,7 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     elif args.mode == "test":
+        logger.info("test_mode_d1_hybrid", run_label=run_label, top_k=args.top_k)
         # Load A4-sscd embeddings and align with our gallery/query split
         a4_result = load_embeddings(data_dir, "A4-sscd")
         a4_paths = a4_result.image_paths
@@ -1142,6 +1191,7 @@ def main(argv: list[str] | None = None) -> None:
             timestamp=timestamp,
             feature_cache_dir=feature_cache_dir,
             top_k=args.top_k,
+            run_label=run_label,
             precompute_gallery_tensors=args.precompute_gallery_tensors,
         )
 

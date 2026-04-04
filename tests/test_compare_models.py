@@ -12,9 +12,12 @@ import pytest
 
 from scripts.compare_models import (
     build_comparison_rows,
+    build_multi_context_rows,
     decision_verdict,
     generate_comparison_html,
+    generate_multi_context_html,
     save_comparison_csv,
+    save_multi_context_csv,
 )
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -245,3 +248,201 @@ class TestGenerateComparisonHtml:
         generate_comparison_html(rows, out)
         html = out.read_text()
         assert html.startswith("<!DOCTYPE html>")
+
+
+# ── build_multi_context_rows ───────────────────────────────────────────────────
+
+_FIXTURE_PHONE_COMPLETE_ROWS: list[dict[str, str]] = [
+    {
+        "model_id": "A4-sscd",
+        "timestamp": "2026-03-20T10-00-00",
+        "recall_at_1": "0.778",
+        "recall_at_5": "0.900",
+        "map_at_5": "0.820",
+        "mrr": "0.840",
+        "num_gallery": "981",
+        "num_queries": "203",
+    },
+    {
+        "model_id": "A1-dinov2-cls",
+        "timestamp": "2026-03-20T11-00-00",
+        "recall_at_1": "0.650",
+        "recall_at_5": "0.800",
+        "map_at_5": "0.710",
+        "mrr": "0.720",
+        "num_gallery": "981",
+        "num_queries": "203",
+    },
+]
+
+_FIXTURE_PHONE_SAMPLE_ROWS: list[dict[str, str]] = [
+    {
+        "model_id": "A4-sscd",
+        "timestamp": "2026-03-21T10-00-00",
+        "recall_at_1": "0.800",
+        "recall_at_5": "0.920",
+        "map_at_5": "0.840",
+        "mrr": "0.860",
+        "num_gallery": "857",
+        "num_queries": "50",
+    },
+]
+
+
+class TestBuildMultiContextRows:
+    """Tests for build_multi_context_rows()."""
+
+    def _test_split(self) -> dict[str, dict[str, str]]:
+        return {r["model_id"]: r for r in _FIXTURE_SUMMARY_ROWS}
+
+    def _phone_complete(self) -> dict[str, dict[str, str]]:
+        return {r["model_id"]: r for r in _FIXTURE_PHONE_COMPLETE_ROWS}
+
+    def _phone_sample(self) -> dict[str, dict[str, str]]:
+        return {r["model_id"]: r for r in _FIXTURE_PHONE_SAMPLE_ROWS}
+
+    def test_total_row_count(self) -> None:
+        """Total rows = test-split models + phone-complete models + phone-sample models."""
+        rows = build_multi_context_rows(
+            self._test_split(), self._phone_complete(), self._phone_sample()
+        )
+        # 3 (test-split) + 2 (phone-complete) + 1 (phone-sample)
+        assert len(rows) == 6
+
+    def test_eval_context_field_present(self) -> None:
+        """Every row has an eval_context field."""
+        rows = build_multi_context_rows(
+            self._test_split(), self._phone_complete(), self._phone_sample()
+        )
+        contexts = {r["eval_context"] for r in rows}
+        assert contexts == {"test-split", "phone-complete", "phone-sample"}
+
+    def test_test_split_rows_sorted_by_recall(self) -> None:
+        """Within the test-split context, rows are sorted by Recall@1 descending."""
+        rows = build_multi_context_rows(
+            self._test_split(), self._phone_complete(), self._phone_sample()
+        )
+        ts_rows = [r for r in rows if r["eval_context"] == "test-split"]
+        recalls = [r["recall_at_1"] for r in ts_rows if r["recall_at_1"] is not None]
+        assert recalls == sorted(recalls, reverse=True)
+
+    def test_phone_complete_rows_sorted_by_recall(self) -> None:
+        """Within phone-complete context, rows are sorted by Recall@1 descending."""
+        rows = build_multi_context_rows(
+            self._test_split(), self._phone_complete(), self._phone_sample()
+        )
+        pc_rows = [r for r in rows if r["eval_context"] == "phone-complete"]
+        recalls = [r["recall_at_1"] for r in pc_rows if r["recall_at_1"] is not None]
+        # A4-sscd (0.778) should come before A1-dinov2-cls (0.650)
+        assert recalls[0] == pytest.approx(0.778)
+        assert recalls[1] == pytest.approx(0.650)
+
+    def test_empty_sources_returns_empty_list(self) -> None:
+        rows = build_multi_context_rows({}, {}, {})
+        assert rows == []
+
+    def test_partial_sources_ok(self) -> None:
+        """Works when only some sources are provided."""
+        rows = build_multi_context_rows(self._test_split(), {}, {})
+        assert len(rows) == 3
+        assert all(r["eval_context"] == "test-split" for r in rows)
+
+    def test_verdict_present_on_all_rows(self) -> None:
+        rows = build_multi_context_rows(
+            self._test_split(), self._phone_complete(), self._phone_sample()
+        )
+        for r in rows:
+            assert r["verdict"] in {
+                "zero-shot sufficient",
+                "fine-tuning likely needed",
+                "fine-tuning required",
+                "N/A",
+            }
+
+
+# ── save_multi_context_csv ─────────────────────────────────────────────────────
+
+
+class TestSaveMultiContextCsv:
+    """Tests for save_multi_context_csv()."""
+
+    def _rows(self) -> list[dict[str, Any]]:
+        ts = {r["model_id"]: r for r in _FIXTURE_SUMMARY_ROWS}
+        pc = {r["model_id"]: r for r in _FIXTURE_PHONE_COMPLETE_ROWS}
+        ps = {r["model_id"]: r for r in _FIXTURE_PHONE_SAMPLE_ROWS}
+        return build_multi_context_rows(ts, pc, ps)
+
+    def test_creates_file_with_eval_context_column(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.csv"
+        save_multi_context_csv(self._rows(), out)
+        assert out.exists()
+        with out.open(newline="") as f:
+            reader = csv.DictReader(f)
+            assert "eval_context" in (reader.fieldnames or [])
+            assert "model_id" in (reader.fieldnames or [])
+            data = list(reader)
+        assert len(data) == 6
+
+    def test_contexts_present_in_output(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.csv"
+        save_multi_context_csv(self._rows(), out)
+        with out.open(newline="") as f:
+            data = list(csv.DictReader(f))
+        contexts = {r["eval_context"] for r in data}
+        assert "test-split" in contexts
+        assert "phone-complete" in contexts
+        assert "phone-sample" in contexts
+
+
+# ── generate_multi_context_html ────────────────────────────────────────────────
+
+
+class TestGenerateMultiContextHtml:
+    """Tests for generate_multi_context_html()."""
+
+    def _rows(self) -> list[dict[str, Any]]:
+        ts = {r["model_id"]: r for r in _FIXTURE_SUMMARY_ROWS}
+        pc = {r["model_id"]: r for r in _FIXTURE_PHONE_COMPLETE_ROWS}
+        ps = {r["model_id"]: r for r in _FIXTURE_PHONE_SAMPLE_ROWS}
+        return build_multi_context_rows(ts, pc, ps)
+
+    def test_creates_html_file(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.html"
+        generate_multi_context_html(self._rows(), out)
+        assert out.exists()
+
+    def test_html_has_valid_doctype(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.html"
+        generate_multi_context_html(self._rows(), out)
+        assert out.read_text().startswith("<!DOCTYPE html>")
+
+    def test_html_contains_section_headings(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.html"
+        generate_multi_context_html(self._rows(), out)
+        html = out.read_text()
+        assert "Test-Split Evaluation" in html
+        assert "Phone Photo Evaluation" in html
+        assert "Sample Set" in html
+
+    def test_html_contains_all_model_ids(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.html"
+        generate_multi_context_html(self._rows(), out)
+        html = out.read_text()
+        assert "A1-dinov2-cls" in html
+        assert "A4-sscd" in html
+        assert "A2-openclip" in html
+
+    def test_html_colour_codes_applied(self, tmp_path: Path) -> None:
+        out = tmp_path / "multi.html"
+        generate_multi_context_html(self._rows(), out)
+        html = out.read_text()
+        # A1 R@1=0.92 → green; A2 R@1=0.72 → red
+        assert "r1-green" in html
+        assert "r1-red" in html
+
+    def test_empty_rows_produces_valid_html(self, tmp_path: Path) -> None:
+        out = tmp_path / "empty.html"
+        generate_multi_context_html([], out)
+        html = out.read_text()
+        assert "<!DOCTYPE html>" in html
+        assert "No evaluation data found" in html

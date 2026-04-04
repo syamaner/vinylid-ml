@@ -123,9 +123,7 @@ class TestSelectGalleryForPhoneEval:
         manifest = _make_manifest(["img.jpg"], ["a1"])
         splits = {"a1": "test"}
 
-        _paths, album_ids = _select_gallery_for_phone_eval(
-            manifest, splits, extra_album_ids={"a1"}
-        )
+        _paths, album_ids = _select_gallery_for_phone_eval(manifest, splits, extra_album_ids={"a1"})
 
         assert album_ids.count("a1") == 1
 

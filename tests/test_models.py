@@ -83,9 +83,7 @@ class TestGetDevice:
 
         assert device.type == "cuda"
 
-    def test_falls_back_to_mps_when_cuda_unavailable(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_falls_back_to_mps_when_cuda_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """MPS should be used when CUDA is unavailable and MPS is available."""
         monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
         monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
