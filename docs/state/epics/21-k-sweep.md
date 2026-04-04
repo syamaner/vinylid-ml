@@ -7,11 +7,11 @@ the reference (R@1=0.875, 0.33s/query).
 
 ## Status
 - [x] Code: `--run-label` in `evaluate_local_features.py` enables labelled sweeps
-- [ ] Remote run K=5
-- [ ] Remote run K=10
-- [ ] Remote run K=20
-- [ ] Results synced back locally
-- [ ] State updated with results
+- [x] Remote run K=5 — DONE 2026-04-04
+- [x] Remote run K=10 — DONE 2026-04-04
+- [x] Remote run K=20 — DONE 2026-04-04
+- [x] Results synced back locally
+- [x] State updated with results
 
 ## Expected Latency
 Gallery feature extraction is constant (~105s).  Re-ranking scales with K:
@@ -36,11 +36,14 @@ Waiting for remote CUDA runs.  After results arrive, update with R@1 and
 latency per K value.
 
 ## Latest Results
-*(pending remote run)*
+855 gallery, 4494 queries (full test split), RTX 4090
 
-| K  | R@1 | R@5 | mAP@5 | MRR | lat (s/query) |
-|----|-----|-----|-------|-----|---------------|
-| 5  | ?   | ?   | ?     | ?   | ?             |
-| 10 | ?   | ?   | ?     | ?   | ?             |
-| 20 | ?   | ?   | ?     | ?   | ?             |
-| 50 | 0.875 | 0.900 | 0.886 | 0.887 | 0.33     |
+| K  | R@1   | R@5   | mAP@5 | MRR   | lat (s/query) |
+|----|-------|-------|-------|-------|---------------|
+| 5  | 0.868 | 0.890 | 0.878 | 0.879 | 0.07          |
+| 10 | 0.869 | 0.891 | 0.879 | 0.881 | 0.10          |
+| 20 | 0.872 | 0.895 | 0.883 | 0.884 | 0.16          |
+| 50 | 0.875 | 0.900 | 0.886 | 0.887 | 0.33          |
+
+Key finding: R@1 degrades only 0.7pp from K=50→K=5, but latency drops 4.7×.
+K=10 is the sweet spot for production (R@1=0.869, 0.10s/query).

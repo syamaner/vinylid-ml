@@ -12,7 +12,7 @@ Generate a consolidated comparison report that separates evaluation contexts
 - [x] `generate_multi_context_html()` — multi-section HTML with per-context tables
 - [x] `main()` auto-generates multi-context report when phone CSVs exist
 - [x] Tests added (19 new tests in test_compare_models.py)
-- [ ] Execute after remote results are synced back
+- [x] Executed — 2026-04-04, generates 7-row multi-context report
 
 ## Outputs
 Running `python scripts/compare_models.py` after syncing results produces:
@@ -21,4 +21,4 @@ Running `python scripts/compare_models.py` after syncing results produces:
   (only generated when phone_eval_summary.csv or phone_sample_eval_summary.csv exist)
 
 ## Active Context
-Waiting for remote results (#53 and #21) to be synced back before running.
+DONE. Reports at results/comparison.html and results/multi_context_comparison.html.
