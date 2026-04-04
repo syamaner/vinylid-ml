@@ -1,0 +1,10 @@
+{
+  "model_id": "A3-featureprint",
+  "split": "test",
+  "embeddings_dir": "/Users/sertanyamaner/git/vinylid-ml/data",
+  "config_path": "/Users/sertanyamaner/git/vinylid-ml/configs/dataset.yaml",
+  "gallery_root": "/Volumes/nvme1/vinyl/album-export",
+  "num_bins": 10,
+  "git_sha": "cf80d2e119da7a9a3b85797185e6c3720e7b7af8",
+  "timestamp": "2026-03-14T23-48-28"
+}

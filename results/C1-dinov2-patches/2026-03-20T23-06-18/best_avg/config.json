@@ -1,0 +1,10 @@
+{
+  "model_id": "C1-dinov2-patches-best_avg",
+  "mode": "test",
+  "strategy": "best_avg",
+  "timestamp": "2026-03-20T23-06-18",
+  "top_k": 50,
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "git_sha": "191c4b55c658dc81871e23664ee6357a448f6a9f"
+}

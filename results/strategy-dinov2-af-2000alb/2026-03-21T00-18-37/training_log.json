@@ -1,0 +1,102 @@
+[
+  {
+    "epoch": 0,
+    "train_loss": 39.279403,
+    "val_recall_at_1": 0.1391,
+    "val_recall_at_5": 0.2231,
+    "val_map_at_5": 0.1679,
+    "val_mrr": 0.186,
+    "lr": 9.755e-05,
+    "epoch_time_s": 126.0
+  },
+  {
+    "epoch": 1,
+    "train_loss": 37.656135,
+    "val_recall_at_1": 0.1621,
+    "val_recall_at_5": 0.2623,
+    "val_map_at_5": 0.1982,
+    "val_mrr": 0.2193,
+    "lr": 9.045e-05,
+    "epoch_time_s": 124.4
+  },
+  {
+    "epoch": 2,
+    "train_loss": 37.066809,
+    "val_recall_at_1": 0.245,
+    "val_recall_at_5": 0.3753,
+    "val_map_at_5": 0.2928,
+    "val_mrr": 0.312,
+    "lr": 7.939e-05,
+    "epoch_time_s": 124.5
+  },
+  {
+    "epoch": 3,
+    "train_loss": 36.187076,
+    "val_recall_at_1": 0.3066,
+    "val_recall_at_5": 0.4481,
+    "val_map_at_5": 0.3606,
+    "val_mrr": 0.3775,
+    "lr": 6.545e-05,
+    "epoch_time_s": 125.2
+  },
+  {
+    "epoch": 4,
+    "train_loss": 34.967877,
+    "val_recall_at_1": 0.349,
+    "val_recall_at_5": 0.4834,
+    "val_map_at_5": 0.3998,
+    "val_mrr": 0.4149,
+    "lr": 5e-05,
+    "epoch_time_s": 125.1
+  },
+  {
+    "epoch": 5,
+    "train_loss": 33.823253,
+    "val_recall_at_1": 0.441,
+    "val_recall_at_5": 0.5664,
+    "val_map_at_5": 0.4882,
+    "val_mrr": 0.501,
+    "lr": 3.455e-05,
+    "epoch_time_s": 124.6
+  },
+  {
+    "epoch": 6,
+    "train_loss": 32.355685,
+    "val_recall_at_1": 0.4583,
+    "val_recall_at_5": 0.5762,
+    "val_map_at_5": 0.5027,
+    "val_mrr": 0.5162,
+    "lr": 2.061e-05,
+    "epoch_time_s": 123.8
+  },
+  {
+    "epoch": 7,
+    "train_loss": 30.801936,
+    "val_recall_at_1": 0.5272,
+    "val_recall_at_5": 0.6384,
+    "val_map_at_5": 0.5693,
+    "val_mrr": 0.5797,
+    "lr": 9.55e-06,
+    "epoch_time_s": 125.4
+  },
+  {
+    "epoch": 8,
+    "train_loss": 29.566909,
+    "val_recall_at_1": 0.5519,
+    "val_recall_at_5": 0.6603,
+    "val_map_at_5": 0.5944,
+    "val_mrr": 0.6038,
+    "lr": 2.45e-06,
+    "epoch_time_s": 124.3
+  },
+  {
+    "epoch": 9,
+    "train_loss": 28.6138,
+    "val_recall_at_1": 0.5623,
+    "val_recall_at_5": 0.6647,
+    "val_map_at_5": 0.6033,
+    "val_mrr": 0.6132,
+    "lr": 0.0,
+    "epoch_time_s": 124.4
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "model_id": "A2-openclip",
+  "eval_type": "phone_photos_sample",
+  "eval_set": "sample",
+  "timestamp": "2026-04-04T00-57-21",
+  "match_score_min": 60,
+  "num_gallery": 870,
+  "num_queries": 50,
+  "git_sha": null
+}

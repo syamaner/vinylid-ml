@@ -1,0 +1,10 @@
+{
+  "model_id": "B2-dinov2-supcon",
+  "split": "test",
+  "embeddings_dir": "/Users/sertanyamaner/git/vinylid-ml/data",
+  "config_path": "/Users/sertanyamaner/git/vinylid-ml/configs/dataset.yaml",
+  "gallery_root": "/Volumes/externalssd/vinyl/album-export",
+  "num_bins": 10,
+  "git_sha": "bdb2380aee5c75dbcad8d509a99f12614f7f347c",
+  "timestamp": "2026-03-28T21-41-35"
+}

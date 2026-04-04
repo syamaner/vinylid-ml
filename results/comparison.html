@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zero-Shot Evaluation — Model Comparison</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2em;background:#fafafa;color:#333}
+h1{margin-bottom:.25em}p.subtitle{color:#666;margin-top:0}
+table{border-collapse:collapse;width:100%;background:#fff;
+      box-shadow:0 1px 4px rgba(0,0,0,.12);border-radius:4px;overflow:hidden}
+th{background:#2c3e50;color:#fff;padding:10px 14px;text-align:left;
+   white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid #eee;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f0f4f8}
+.r1-green{background:#d4edda;font-weight:700}
+.r1-amber{background:#fff3cd;font-weight:700}
+.r1-red{background:#f8d7da;font-weight:700}
+.v-ok{color:#155724;font-weight:700}
+.v-likely{color:#856404;font-weight:700}
+.v-req{color:#721c24;font-weight:700}
+.na{color:#bbb}
+</style>
+</head>
+<body>
+<h1>Zero-Shot Evaluation — Model Comparison</h1>
+<p class="subtitle">
+  Decision criteria:&nbsp;
+  <strong style="color:#155724">Recall@1 &ge; 90%</strong> → zero-shot sufficient
+  &nbsp;|&nbsp;
+  <strong style="color:#856404">80-90%</strong> → fine-tuning likely needed
+  &nbsp;|&nbsp;
+  <strong style="color:#721c24">&lt;80%</strong> → fine-tuning required
+</p>
+<table>
+<thead>
+<tr><th>Model</th><th>Recall@1</th><th>Recall@5</th><th>mAP@5</th><th>MRR</th><th>Gallery</th><th>Queries</th><th>p50&nbsp;ms</th><th>p95&nbsp;ms</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr><td>B2c-dinov2-supcon</td><td class="r1-amber">0.8795</td><td>0.9053</td><td>0.8903</td><td>0.8925</td><td>855</td><td>4564</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td></td><td class="r1-amber">0.8725</td><td>0.8950</td><td>0.8829</td><td>0.8841</td><td>855</td><td>4494</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A4-sscd</td><td class="r1-amber">0.8720</td><td>0.8983</td><td>0.8836</td><td>0.8852</td><td>855</td><td>4564</td><td>5.5</td><td>6.3</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A1-dinov2-cls</td><td class="r1-amber">0.8659</td><td>0.9032</td><td>0.8810</td><td>0.8832</td><td>855</td><td>4564</td><td>4.2</td><td>5.3</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>B2-dinov2-supcon</td><td class="r1-amber">0.8659</td><td>0.9012</td><td>0.8805</td><td>0.8828</td><td>855</td><td>4564</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A2-openclip</td><td class="r1-amber">0.8611</td><td>0.9297</td><td>0.8886</td><td>0.8926</td><td>855</td><td>4564</td><td>8.0</td><td>8.9</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>B3-sscd-supcon</td><td class="r1-amber">0.8604</td><td>0.8948</td><td>0.8751</td><td>0.8772</td><td>855</td><td>4564</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A1-dinov2-cls-518</td><td class="r1-amber">0.8589</td><td>0.8999</td><td>0.8762</td><td>0.8797</td><td>855</td><td>4564</td><td>26.7</td><td>27.9</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A3-featureprint</td><td class="r1-amber">0.8563</td><td>0.9185</td><td>0.8813</td><td>0.8849</td><td>855</td><td>4564</td><td>5.1</td><td>5.3</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>B1-mobilenet_v3_small-supcon</td><td class="r1-amber">0.8471</td><td>0.8841</td><td>0.8614</td><td>0.8648</td><td>855</td><td>4564</td><td><span class="na">N/A</span></td><td><span class="na">N/A</span></td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A1-dinov2-gem</td><td class="r1-amber">0.8348</td><td>0.8872</td><td>0.8566</td><td>0.8595</td><td>855</td><td>4564</td><td>4.3</td><td>5.3</td><td class="v-likely">fine-tuning likely needed</td></tr>
+<tr><td>A1-dinov2-gem-518</td><td class="r1-amber">0.8276</td><td>0.8819</td><td>0.8485</td><td>0.8520</td><td>855</td><td>4564</td><td>26.5</td><td>27.5</td><td class="v-likely">fine-tuning likely needed</td></tr>
+</tbody>
+</table>
+</body>
+</html>

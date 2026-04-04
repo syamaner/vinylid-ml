@@ -1,0 +1,13 @@
+{
+  "retrieval": {
+    "recall_at_1": 0.44,
+    "recall_at_5": 0.52,
+    "map_at_5": 0.4706666666666666,
+    "mrr": 0.4958574213544168,
+    "num_queries": 50,
+    "num_gallery": 868,
+    "top_k_sample": 50,
+    "latency_per_query_s": 41.857
+  },
+  "mode": "sample"
+}

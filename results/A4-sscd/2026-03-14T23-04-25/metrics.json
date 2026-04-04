@@ -1,0 +1,27 @@
+{
+  "model_id": "A4-sscd",
+  "split": "test",
+  "timestamp": "2026-03-14T23-04-25",
+  "git_sha": "256de393483049fe924f852089fbdff5188de9eb",
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "retrieval": {
+    "recall_at_1": 0.8720420683610868,
+    "recall_at_5": 0.8983347940403155,
+    "map_at_5": 0.8835597429155712,
+    "mrr": 0.8851755414734747,
+    "num_queries": 4564
+  },
+  "stratified": {
+    "by_album_image_count": {
+      "2-5": 0.82421875,
+      "6+": 0.8903954802259887
+    },
+    "by_resolution_bucket": {
+      "<400px": 0.8217821782178217,
+      "400-800px": 0.843834141087776,
+      "800+px": 0.9068219633943427
+    },
+    "by_augmentation_type": {}
+  }
+}

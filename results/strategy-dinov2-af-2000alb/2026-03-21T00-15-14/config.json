@@ -1,0 +1,27 @@
+{
+  "backbone": "dinov2",
+  "loss": "arcface",
+  "projection_dim": 384,
+  "num_classes": 2000,
+  "lr": 0.0001,
+  "weight_decay": 0.0001,
+  "epochs": 10,
+  "batch_size": 32,
+  "seed": 42,
+  "subset_albums": 2000,
+  "freeze_epochs": 0,
+  "margin": 0.5,
+  "scale": 64.0,
+  "alpha": 32.0,
+  "temperature": 0.07,
+  "n_views": 1,
+  "input_size": 224,
+  "device": "mps",
+  "git_sha": "191c4b55c658dc81871e23664ee6357a448f6a9f",
+  "manifest_hash": "48a4154a8412",
+  "extra": {
+    "torch_version": "2.10.0",
+    "model_name": "strategy-dinov2-af-2000alb",
+    "timestamp": "2026-03-21T00-15-14"
+  }
+}

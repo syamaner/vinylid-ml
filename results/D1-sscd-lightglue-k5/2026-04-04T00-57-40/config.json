@@ -1,0 +1,11 @@
+{
+  "model_id": "D1-sscd-lightglue-k5",
+  "pipeline": "D1-sscd-lightglue",
+  "base_model": "C2-superpoint-lightglue",
+  "mode": "test",
+  "timestamp": "2026-04-04T00-57-40",
+  "top_k": 5,
+  "num_gallery": 855,
+  "num_queries": 4494,
+  "git_sha": null
+}

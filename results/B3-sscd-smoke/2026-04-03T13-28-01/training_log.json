@@ -1,0 +1,13 @@
+[
+  {
+    "epoch": 0,
+    "train_loss": 1.431144,
+    "val_recall_at_1": 0.8371,
+    "val_recall_at_5": 0.8686,
+    "val_map_at_5": 0.8503,
+    "val_mrr": 0.8535,
+    "backbone_lr": 0.0,
+    "head_lr": 0.0,
+    "epoch_time_s": 24.2
+  }
+]

@@ -1,0 +1,31 @@
+{
+  "backbone": "dinov2",
+  "loss": "supcon",
+  "projection_dim": 384,
+  "num_classes": 6841,
+  "lr": 0.0001,
+  "weight_decay": 0.0001,
+  "epochs": 50,
+  "batch_size": 32,
+  "seed": 42,
+  "subset_albums": null,
+  "freeze_epochs": 10,
+  "backbone_lr_mult": 0.01,
+  "llrd_decay": 0.9,
+  "unfreeze_blocks": null,
+  "patience": 10,
+  "margin": 0.5,
+  "scale": 64.0,
+  "alpha": 32.0,
+  "temperature": 0.07,
+  "n_views": 2,
+  "input_size": 224,
+  "device": "mps",
+  "git_sha": "72225cffc052bda65f6e208b30a3573146e469af",
+  "manifest_hash": "bc67a55a2cb1",
+  "extra": {
+    "torch_version": "2.10.0",
+    "model_name": "B2c-dinov2-supcon",
+    "timestamp": "2026-03-28T21-52-36"
+  }
+}

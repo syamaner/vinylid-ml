@@ -1,0 +1,27 @@
+{
+  "model_id": "A1-dinov2-cls",
+  "split": "test",
+  "timestamp": "2026-03-14T22-54-54",
+  "git_sha": "256de393483049fe924f852089fbdff5188de9eb",
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "retrieval": {
+    "recall_at_1": 0.8659070990359334,
+    "recall_at_5": 0.9031551270815075,
+    "map_at_5": 0.8810436751387671,
+    "mrr": 0.883237569622571,
+    "num_queries": 4564
+  },
+  "stratified": {
+    "by_album_image_count": {
+      "2-5": 0.80859375,
+      "6+": 0.8878531073446327
+    },
+    "by_resolution_bucket": {
+      "<400px": 0.8217821782178217,
+      "400-800px": 0.8379106085083468,
+      "800+px": 0.9009983361064892
+    },
+    "by_augmentation_type": {}
+  }
+}

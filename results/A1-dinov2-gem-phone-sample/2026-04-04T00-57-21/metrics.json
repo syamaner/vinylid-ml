@@ -1,0 +1,17 @@
+{
+  "model_id": "A1-dinov2-gem",
+  "eval_type": "phone_photos_sample",
+  "eval_set": "sample",
+  "timestamp": "2026-04-04T00-57-21",
+  "git_sha": null,
+  "num_gallery": 870,
+  "num_queries": 50,
+  "retrieval": {
+    "recall_at_1": 0.36,
+    "recall_at_5": 0.5,
+    "map_at_5": 0.409,
+    "mrr": 0.42673135648579746,
+    "num_queries": 50,
+    "latency_per_query_s": 0.027
+  }
+}

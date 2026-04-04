@@ -95,7 +95,6 @@ def _collate(
     return torch.stack(tensors), list(paths), list(album_ids)
 
 
-
 @torch.inference_mode()
 def embed_with_finetuned(
     model: FineTuneModel,

@@ -1,0 +1,27 @@
+{
+  "model_id": "B3-sscd-supcon",
+  "split": "test",
+  "timestamp": "2026-04-02T23-47-34",
+  "git_sha": "663231a7288002f84ca4a1a49af035ef36254d83",
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "retrieval": {
+    "recall_at_1": 0.8604294478527608,
+    "recall_at_5": 0.894829097283085,
+    "map_at_5": 0.8751095530236634,
+    "mrr": 0.8772362412946413,
+    "num_queries": 4564
+  },
+  "stratified": {
+    "by_album_image_count": {
+      "2-5": 0.822265625,
+      "6+": 0.8762711864406779
+    },
+    "by_resolution_bucket": {
+      "<400px": 0.8085808580858086,
+      "400-800px": 0.8330640818524502,
+      "800+px": 0.8951747088186356
+    },
+    "by_augmentation_type": {}
+  }
+}

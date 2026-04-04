@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
-"""Evaluate global embedding models against real-world phone photos (story #15).
+"""Evaluate global embedding models against real-world phone photos (stories #15, #53).
 
-Loads the 243 labeled iPhone captures from ``test_complete/``, strips all EXIF
-metadata in-memory, embeds each photo with the given model, and computes
-retrieval metrics against the test-split gallery embeddings.
+Two evaluation sets are supported via ``--eval-set``:
+
+  ``--eval-set complete``  (default):
+    Loads the 203 labeled iPhone captures from ``test_complete/``, strips all
+    EXIF metadata in-memory, embeds each photo and computes retrieval metrics
+    against the test-split gallery embeddings.  Results appended to
+    ``results/phone_eval_summary.csv``.
+
+  ``--eval-set sample``  (story #53):
+    Runs against the same 55-photo / 50-matched-query sample used by C2
+    sample-mode evaluation (``test_sample_matched.csv``, ``test_sample`` dir),
+    using ``match_score_min=60`` and the corresponding sample-mode gallery
+    selection: the canonical test-split gallery plus any additional albums
+    referenced by the matched CSV. Enables direct apples-to-apples comparison
+    with C2 LightGlue results. Results appended to
+    ``results/phone_sample_eval_summary.csv``.
 
 Privacy guardrail: EXIF is stripped in-memory on load. No photo paths are
 written to any output file. Only aggregate metrics are reported.
@@ -14,8 +27,10 @@ Usage::
         --config configs/dataset-remote.yaml \\
         --model A4-sscd
 
+    # Story #53: A-series vs C2 on the same 55-photo sample
     python scripts/evaluate_phone_photos.py \\
-        --config configs/dataset.yaml \\
+        --config configs/dataset-remote.yaml \\
+        --eval-set sample \\
         --models A1-dinov2-cls,A1-dinov2-gem,A2-openclip,A4-sscd
 """
 
@@ -51,6 +66,10 @@ logger = structlog.get_logger()
 
 # Minimum fuzzy-match score for a phone photo to be included in evaluation.
 _DEFAULT_MATCH_SCORE_MIN: int = 60
+
+# Evaluation set choices.
+_EVAL_SET_COMPLETE: str = "complete"
+_EVAL_SET_SAMPLE: str = "sample"
 
 
 def _get_git_sha() -> str | None:
@@ -149,8 +168,6 @@ def _select_gallery_for_phone_eval(
     return gallery_paths, gallery_album_ids
 
 
-
-
 def _append_summary_csv(
     results_dir: Path,
     model_id: str,
@@ -158,8 +175,9 @@ def _append_summary_csv(
     metrics: dict[str, object],
     num_gallery: int,
     num_queries: int,
+    summary_csv_name: str = "phone_eval_summary.csv",
 ) -> None:
-    """Append a row to ``results/phone_eval_summary.csv``.
+    """Append a row to a phone evaluation summary CSV.
 
     Args:
         results_dir: Top-level results directory.
@@ -168,8 +186,11 @@ def _append_summary_csv(
         metrics: Metrics dict (retrieval sub-dict).
         num_gallery: Number of gallery items.
         num_queries: Number of query items.
+        summary_csv_name: Filename within ``results_dir``.  Defaults to
+            ``"phone_eval_summary.csv"``; use
+            ``"phone_sample_eval_summary.csv"`` for sample-mode runs.
     """
-    summary_path = results_dir / "phone_eval_summary.csv"
+    summary_path = results_dir / summary_csv_name
     write_header = not summary_path.exists()
 
     retrieval = metrics.get("retrieval", metrics)
@@ -215,13 +236,15 @@ def evaluate_model(
     results_dir: Path,
     timestamp: str,
     match_score_min: int,
+    eval_set: str = _EVAL_SET_COMPLETE,
     model: object = None,  # pre-loaded model; loaded lazily if None
 ) -> dict[str, object]:
     """Evaluate a single global embedding model against phone photos.
 
     Args:
         model_id: Model identifier (e.g. ``"A4-sscd"``).
-        test_complete_matched_csv: Path to ``test_complete_matched.csv``.
+        test_complete_matched_csv: Path to the matched photos CSV
+            (``test_complete_matched.csv`` or ``test_sample_matched.csv``).
         test_complete_dir: Directory containing the phone photo files.
         data_dir: Data directory with pre-computed gallery embeddings.
         gallery_paths_str: Ordered list of gallery image path strings.
@@ -232,6 +255,8 @@ def evaluate_model(
         results_dir: Top-level results directory.
         timestamp: ISO-style timestamp string.
         match_score_min: Minimum fuzzy-match score to include a photo.
+        eval_set: Evaluation set identifier — ``"complete"`` or ``"sample"``.
+            Controls run directory name and summary CSV target.
 
     Returns:
         Metrics dict with ``"retrieval"`` sub-dict.
@@ -281,9 +306,7 @@ def evaluate_model(
             # Resolve relative paths against gallery_root (manifest paths are
             # absolute when produced by prepare_dataset.py but may be relative
             # in test/dev environments).
-            gpath_resolved = (
-                Path(gpath) if Path(gpath).is_absolute() else gallery_root / gpath
-            )
+            gpath_resolved = Path(gpath) if Path(gpath).is_absolute() else gallery_root / gpath
             try:
                 with PILImage.open(gpath_resolved) as img:
                     img.load()
@@ -405,12 +428,15 @@ def evaluate_model(
     )
 
     # ── Save results ──────────────────────────────────────────────────────
-    run_dir = results_dir / f"{model_id}-phone" / timestamp
+    run_dir_suffix = "phone-sample" if eval_set == _EVAL_SET_SAMPLE else "phone"
+    run_dir = results_dir / f"{model_id}-{run_dir_suffix}" / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    eval_type = f"phone_photos_{eval_set}"
     out_metrics: dict[str, object] = {
         "model_id": model_id,
-        "eval_type": "phone_photos",
+        "eval_type": eval_type,
+        "eval_set": eval_set,
         "timestamp": timestamp,
         "git_sha": _get_git_sha(),
         "num_gallery": num_gallery,
@@ -422,7 +448,8 @@ def evaluate_model(
 
     out_config: dict[str, object] = {
         "model_id": model_id,
-        "eval_type": "phone_photos",
+        "eval_type": eval_type,
+        "eval_set": eval_set,
         "timestamp": timestamp,
         "match_score_min": match_score_min,
         "num_gallery": num_gallery,
@@ -432,6 +459,11 @@ def evaluate_model(
     with (run_dir / "config.json").open("w") as f:
         json.dump(out_config, f, indent=2)
 
+    summary_csv_name = (
+        "phone_sample_eval_summary.csv"
+        if eval_set == _EVAL_SET_SAMPLE
+        else "phone_eval_summary.csv"
+    )
     _append_summary_csv(
         results_dir,
         model_id,
@@ -439,10 +471,12 @@ def evaluate_model(
         {"retrieval": dict(metrics)},
         num_gallery,
         num_queries,
+        summary_csv_name=summary_csv_name,
     )
 
+    set_label = f"phone-{eval_set}"
     print(
-        f"\n{model_id} (phone photos):\n"
+        f"\n{model_id} ({set_label}):\n"
         f"  R@1={float(metrics['recall_at_1']):.3f}  "
         f"R@5={float(metrics['recall_at_5']):.3f}  "
         f"mAP@5={float(metrics['map_at_5']):.3f}  "
@@ -468,13 +502,22 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to dataset.yaml config file (default: configs/dataset.yaml).",
     )
     parser.add_argument(
+        "--eval-set",
+        type=str,
+        default=_EVAL_SET_COMPLETE,
+        choices=[_EVAL_SET_COMPLETE, _EVAL_SET_SAMPLE],
+        help=(
+            "Evaluation set: 'complete' (default, 203-photo real-world set, "
+            "appends to phone_eval_summary.csv) or 'sample' (55-photo sample "
+            "matching C2 sample-mode dataset, story #53, appends to "
+            "phone_sample_eval_summary.csv)."
+        ),
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default=None,
-        help=(
-            "Single model ID to evaluate (e.g. A4-sscd). "
-            "Mutually exclusive with --models."
-        ),
+        help=("Single model ID to evaluate (e.g. A4-sscd). Mutually exclusive with --models."),
     )
     parser.add_argument(
         "--models",
@@ -498,8 +541,9 @@ def main(argv: list[str] | None = None) -> None:
         help="Top-level results directory (default: results/).",
     )
     args = parser.parse_args(argv)
+    eval_set: str = args.eval_set
 
-    # ── Resolve model list ────────────────────────────────────────────────
+    # ── Resolve model list ──────────────────────────────────────────────────
     if args.model is not None and args.models is not None:
         parser.error("--model and --models are mutually exclusive")
 
@@ -513,11 +557,9 @@ def main(argv: list[str] | None = None) -> None:
 
     for mid in model_ids:
         if mid not in ALL_MODEL_IDS:
-            parser.error(
-                f"Unknown model ID '{mid}'. Valid IDs: {', '.join(ALL_MODEL_IDS)}"
-            )
+            parser.error(f"Unknown model ID '{mid}'. Valid IDs: {', '.join(ALL_MODEL_IDS)}")
 
-    # ── Load config ───────────────────────────────────────────────────────
+    # ── Load config ───────────────────────────────────────────────────
     config_path: Path = args.config.resolve()
     if not config_path.exists():
         logger.error("config_not_found", path=str(config_path))
@@ -531,37 +573,56 @@ def main(argv: list[str] | None = None) -> None:
     if not gallery_root.is_absolute():
         gallery_root = (config_dir / gallery_root).resolve()
 
-    test_complete_dir = Path(str(config["paths"]["test_complete"]))
-    if not test_complete_dir.is_absolute():
-        test_complete_dir = (config_dir / test_complete_dir).resolve()
-
     data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
     manifest_path = data_dir / "manifest.parquet"
     splits_path = data_dir / "splits.json"
-    test_complete_matched_csv = data_dir / "test_complete_matched.csv"
+
+    # ── Resolve eval-set-specific paths ─────────────────────────────────
+    if eval_set == _EVAL_SET_SAMPLE:
+        # Sample mode: same dataset as C2 sample-mode (#53)
+        photo_dir_key = "test_sample"
+        matched_csv_name = "test_sample_matched.csv"
+    else:
+        # Complete mode: 203-photo real-world set (default)
+        photo_dir_key = "test_complete"
+        matched_csv_name = "test_complete_matched.csv"
+
+    raw_photo_dir = config["paths"].get(photo_dir_key)
+    if raw_photo_dir is None:
+        logger.error(
+            "config_key_missing",
+            key=f"paths.{photo_dir_key}",
+            config=str(config_path),
+        )
+        sys.exit(1)
+    photo_dir = Path(str(raw_photo_dir))
+    if not photo_dir.is_absolute():
+        photo_dir = (config_dir / photo_dir).resolve()
+
+    matched_csv = data_dir / matched_csv_name
 
     results_dir: Path = args.results_dir.resolve() if args.results_dir else Path.cwd() / "results"
     timestamp = time.strftime("%Y-%m-%dT%H-%M-%S", time.gmtime())
 
-    # ── Validate inputs ───────────────────────────────────────────────────
+    # ── Validate inputs ──────────────────────────────────────────────────
     for path, label in [
         (manifest_path, "manifest.parquet"),
         (splits_path, "splits.json"),
-        (test_complete_matched_csv, "test_complete_matched.csv"),
-        (test_complete_dir, "test_complete directory"),
+        (matched_csv, matched_csv_name),
+        (photo_dir, photo_dir_key + " directory"),
     ]:
         if not path.exists():
             logger.error("required_path_missing", label=label, path=str(path))
             sys.exit(1)
 
-    # ── Build gallery path/album_id list ──────────────────────────────────
+    # ── Build gallery path/album_id list ────────────────────────────────────
     manifest = load_manifest(manifest_path)
     splits = load_splits(splits_path)
 
     # Pre-load matched CSV to find albums outside the test split that need to be
     # added to the gallery.  This mirrors _mode_sample gallery expansion so
     # that ALL matched phone photos have a retrievable gallery entry.
-    pre_matched = pd.read_csv(test_complete_matched_csv)
+    pre_matched = pd.read_csv(matched_csv)
     pre_matched_filtered = pre_matched[
         (pre_matched["file_exists"] == True)  # noqa: E712
         & pre_matched["matched_album_id"].notna()
@@ -587,19 +648,20 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info(
         "gallery_built",
+        eval_set=eval_set,
         num_gallery=len(gallery_paths_str),
         num_test_albums=len(test_album_ids_in_splits),
         num_extra_albums=len(extra_album_ids),
     )
 
-    # ── Evaluate each model ──────────────────────────────────────────────
+    # ── Evaluate each model ─────────────────────────────────────────────
     all_results: list[dict[str, object]] = []
     for model_id in model_ids:
         try:
             result = evaluate_model(
                 model_id=model_id,
-                test_complete_matched_csv=test_complete_matched_csv,
-                test_complete_dir=test_complete_dir,
+                test_complete_matched_csv=matched_csv,
+                test_complete_dir=photo_dir,
                 data_dir=data_dir,
                 gallery_paths_str=gallery_paths_str,
                 gallery_album_ids=gallery_album_ids,
@@ -607,16 +669,18 @@ def main(argv: list[str] | None = None) -> None:
                 results_dir=results_dir,
                 timestamp=timestamp,
                 match_score_min=args.match_score_min,
+                eval_set=eval_set,
             )
             all_results.append(result)
         except (FileNotFoundError, ValueError) as exc:
             logger.error("model_eval_failed", model_id=model_id, error=str(exc))
             print(f"\n[SKIP] {model_id}: {exc}\n", file=sys.stderr)
 
-    # ── Final summary ─────────────────────────────────────────────────────
+    # ── Final summary ──────────────────────────────────────────────────
     if len(all_results) > 1:
+        set_label = f"phone-{eval_set}"
         print("\n" + "=" * 60)
-        print("PHONE PHOTO EVAL SUMMARY")
+        print(f"PHONE PHOTO EVAL SUMMARY ({set_label})")
         print("=" * 60)
         for r in all_results:
             mid = r["model_id"]
@@ -629,7 +693,12 @@ def main(argv: list[str] | None = None) -> None:
                     f"mAP@5={ret.get('map_at_5', 0):.3f}"
                 )
         print("=" * 60 + "\n")
-        print(f"  Summary CSV: {results_dir / 'phone_eval_summary.csv'}\n")
+        summary_csv_name = (
+            "phone_sample_eval_summary.csv"
+            if eval_set == _EVAL_SET_SAMPLE
+            else "phone_eval_summary.csv"
+        )
+        print(f"  Summary CSV: {results_dir / summary_csv_name}\n")
 
 
 if __name__ == "__main__":

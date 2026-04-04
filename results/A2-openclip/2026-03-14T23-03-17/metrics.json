@@ -1,0 +1,27 @@
+{
+  "model_id": "A2-openclip",
+  "split": "test",
+  "timestamp": "2026-03-14T23-03-17",
+  "git_sha": "256de393483049fe924f852089fbdff5188de9eb",
+  "num_gallery": 855,
+  "num_queries": 4564,
+  "retrieval": {
+    "recall_at_1": 0.8610867659947414,
+    "recall_at_5": 0.929666958808063,
+    "map_at_5": 0.8886393514461,
+    "mrr": 0.8926061908073302,
+    "num_queries": 4564
+  },
+  "stratified": {
+    "by_album_image_count": {
+      "2-5": 0.8701171875,
+      "6+": 0.8607344632768361
+    },
+    "by_resolution_bucket": {
+      "<400px": 0.8316831683168316,
+      "400-800px": 0.8535271943995691,
+      "800+px": 0.8739600665557404
+    },
+    "by_augmentation_type": {}
+  }
+}

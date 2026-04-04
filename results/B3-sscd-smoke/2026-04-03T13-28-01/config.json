@@ -1,0 +1,32 @@
+{
+  "backbone": "sscd",
+  "loss": "supcon",
+  "projection_dim": 512,
+  "num_classes": 200,
+  "lr": 0.0001,
+  "weight_decay": 0.0001,
+  "epochs": 1,
+  "batch_size": 64,
+  "seed": 42,
+  "subset_albums": 200,
+  "freeze_epochs": 0,
+  "backbone_lr_mult": 0.1,
+  "llrd_decay": null,
+  "unfreeze_blocks": null,
+  "patience": null,
+  "margin": 0.5,
+  "scale": 64.0,
+  "alpha": 32.0,
+  "temperature": 0.07,
+  "n_views": 2,
+  "input_size": 224,
+  "device": "cuda",
+  "git_sha": null,
+  "manifest_hash": "5b01ca264c58",
+  "extra": {
+    "torch_version": "2.7.0",
+    "model_name": "B3-sscd-smoke",
+    "num_workers": 12,
+    "timestamp": "2026-04-03T13-28-01"
+  }
+}

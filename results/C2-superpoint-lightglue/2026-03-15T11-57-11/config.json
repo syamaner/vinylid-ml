@@ -1,0 +1,10 @@
+{
+  "model_id": "C2-superpoint-lightglue",
+  "mode": "sample",
+  "timestamp": "2026-03-15T11-57-11",
+  "num_gallery": 857,
+  "num_queries": 5,
+  "match_score_min": 60,
+  "top_k_sample": 50,
+  "git_sha": "e9fd23da5c22b0311d866b351fd01a6bb95bb7f9"
+}

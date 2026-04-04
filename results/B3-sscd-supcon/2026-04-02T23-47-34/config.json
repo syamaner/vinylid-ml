@@ -1,0 +1,10 @@
+{
+  "model_id": "B3-sscd-supcon",
+  "split": "test",
+  "embeddings_dir": "/Users/sertanyamaner/git/vinylid-ml/data",
+  "config_path": "/Users/sertanyamaner/git/vinylid-ml/configs/dataset.yaml",
+  "gallery_root": "/Users/sertanyamaner/git/vinylid-ml/data/album-export",
+  "num_bins": 10,
+  "git_sha": "663231a7288002f84ca4a1a49af035ef36254d83",
+  "timestamp": "2026-04-02T23-47-34"
+}

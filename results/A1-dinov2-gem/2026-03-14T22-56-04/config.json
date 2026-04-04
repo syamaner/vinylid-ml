@@ -1,0 +1,10 @@
+{
+  "model_id": "A1-dinov2-gem",
+  "split": "test",
+  "embeddings_dir": "/Users/sertanyamaner/git/vinylid-ml/data",
+  "config_path": "/Users/sertanyamaner/git/vinylid-ml/configs/dataset.yaml",
+  "gallery_root": "/Volumes/nvme1/vinyl/album-export",
+  "num_bins": 10,
+  "git_sha": "256de393483049fe924f852089fbdff5188de9eb",
+  "timestamp": "2026-03-14T22-56-04"
+}

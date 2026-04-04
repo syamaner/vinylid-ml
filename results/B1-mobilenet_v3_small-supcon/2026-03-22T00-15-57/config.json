@@ -1,0 +1,10 @@
+{
+  "model_id": "B1-mobilenet_v3_small-supcon",
+  "split": "test",
+  "embeddings_dir": "/Users/sertanyamaner/git/vinylid-ml/data",
+  "config_path": "/Users/sertanyamaner/git/vinylid-ml/configs/dataset.yaml",
+  "gallery_root": "/Volumes/nvme1/vinyl/album-export",
+  "num_bins": 10,
+  "git_sha": "b7bedbccb385ba56e305b0bb6c0490b8e93b8936",
+  "timestamp": "2026-03-22T00-15-57"
+}
