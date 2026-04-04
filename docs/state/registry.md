@@ -36,7 +36,9 @@ Then open the linked state file for full context.
 
 ## Sprint 4: Accuracy Push
 
-- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — IN PROGRESS (Phase 2)
+- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — CLOSED (target not reached)
   - State: `docs/state/epics/sprint4-accuracy-push.md`
-  - Phase 1 done: best is A4-sscd-tta5-aqe5a0.5 at R@1=0.783 (target: >0.90)
-  - Phase 2 next: frozen SSCD + MLP projection head on 203 real phone pairs
+  - Best: A4-sscd-tta5-aqe5a0.5 R@1=0.783; production: A4-sscd zero-shot R@1=0.778
+  - Phase 2 projection head overfits (val R@1=0.405 peak; 161 pairs, 162K params)
+  - Phase 3 skipped (LightGlue already showed local matching hurts cross-domain)
+  - Root cause: data — 203 pairs insufficient for adaptation; need 1000+ or synthetic aug
