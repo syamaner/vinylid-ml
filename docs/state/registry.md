@@ -34,6 +34,9 @@ Then open the linked state file for full context.
   - State: `docs/state/epics/15-phone-photo-eval.md`
   - Result: A4-sscd R@1=0.778 leads; C2 R@1=0.621 (cross-domain gap confirmed)
 
-## Sprint 4: CoreML + Index + E2E Integration
+## Sprint 4: Accuracy Push
 
-- Status: NOT STARTED
+- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — IN PROGRESS
+  - State: `docs/state/epics/sprint4-accuracy-push.md`
+  - Phase 1 implementing: A5-sscd-blur, A3 phone eval, TTA, alpha-QE
+  - Baseline: A4-sscd R@1=0.778 (target: >0.90)

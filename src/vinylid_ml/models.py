@@ -31,6 +31,8 @@ __all__ = [
 ]
 
 #: Ordered tuple of all supported zero-shot model IDs.
+#: Note: A3-featureprint (Apple Vision) and fine-tuned B-series models are
+#: handled separately and are not registered here.
 ALL_MODEL_IDS: tuple[str, ...] = (
     "A1-dinov2-cls",
     "A1-dinov2-gem",
@@ -38,6 +40,7 @@ ALL_MODEL_IDS: tuple[str, ...] = (
     "A1-dinov2-gem-518",
     "A2-openclip",
     "A4-sscd",
+    "A5-sscd-blur",
 )
 
 logger = structlog.get_logger()
@@ -351,6 +354,8 @@ class SSCDEmbedder(EmbeddingModel):
         device: torch.device | None = None,
     ) -> None:
         self._device = device or get_device()
+        # _variant must be set before model_id is accessed (e.g. in logger.info below)
+        self._variant = variant
 
         if variant not in SSCD_URLS:
             raise ValueError(
@@ -385,7 +390,7 @@ class SSCDEmbedder(EmbeddingModel):
 
     @property
     def model_id(self) -> str:
-        return "A4-sscd"
+        return "A5-sscd-blur" if self._variant == "sscd_disc_blur" else "A4-sscd"
 
     @property
     def embedding_dim(self) -> int:
@@ -452,6 +457,8 @@ def create_model(model_id: str) -> EmbeddingModel:
             return OpenCLIPEmbedder()
         case "A4-sscd":
             return SSCDEmbedder()
+        case "A5-sscd-blur":
+            return SSCDEmbedder(variant="sscd_disc_blur")
         case _:
             raise ValueError(
                 f"Unknown model_id: '{model_id}'. Available: {', '.join(ALL_MODEL_IDS)}"
