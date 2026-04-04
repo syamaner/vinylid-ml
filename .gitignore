@@ -40,6 +40,8 @@ env/
 test_photos/
 
 # Experiment outputs (uploaded to HF Hub, not git)
+# per_query.csv files contain phone photo filenames — never commit
+results/**/per_query.csv
 # Large binary artifacts inside results/ — use HF Hub for these
 results/**/*.pt
 results/**/*.pth

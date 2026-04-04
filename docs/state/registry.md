@@ -22,10 +22,8 @@ Then open the linked state file for full context.
   - Sweet spot: K=10 (0.869 R@1, 0.10s/query, 3.3× faster than K=50)
 - **[#22] Cross-category comparison report** — DONE
   - State: `docs/state/epics/22-cross-category-report.md`
-  - `results/multi_context_comparison.html` generated (7 rows, 3 contexts)
-- **[#23] HF Hub push** — PENDING (run `python scripts/push_to_hub.py`)
-  - State: `docs/state/epics/23-hf-hub-push.md`
-  - `scripts/push_to_hub.py` ready
+  - `results/multi_context_comparison.html` generated (21 rows, 3 eval contexts)
+- **[#23] HF Hub push** — CANCELLED (HF repo deleted; results tracked in git)
 
 ## Sprint 2: Remaining Items (deferred)
 

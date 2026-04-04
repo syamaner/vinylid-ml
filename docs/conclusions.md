@@ -23,12 +23,13 @@ domain as the gallery. Real phone photos are a different domain entirely.
 
 | Model | Test-split R@1 | Phone-complete R@1 | Delta |
 |---|---|---|---|
-| A1-dinov2-cls | **0.920** | 0.500 | −42pp |
-| A4-sscd | 0.850 | **0.778** | −7pp |
+| A1-dinov2-cls | 0.866 | 0.500 | −37pp |
+| A4-sscd | **0.872** | **0.778** | −9pp |
 | C2 LightGlue (D1-style) | 0.880¹ | 0.621 | −26pp |
-| A2-openclip | 0.720 | 0.420 | −30pp |
+| A2-openclip | 0.861 | 0.420 | −44pp |
 
 ¹ Sample-mode R@1 on the curated 50-photo subset.
+*Test-split R@1 from committed per-run metrics.json (855 gallery, 4564 queries).*
 
 A4-sscd drops only 7pp because it was trained for copy detection
 (domain shift by design). All other approaches drop 26–42pp.
@@ -108,7 +109,7 @@ If D1 is used server-side, **K=10 is the recommendation**.
 - [`results/multi_context_comparison.html`](../results/multi_context_comparison.html) —
   full Sprint 3 leaderboard: test-split, phone-complete, and phone-sample in one page
 - [`results/multi_context_comparison.csv`](../results/multi_context_comparison.csv) —
-  machine-readable version of the above (12 rows, 3 eval contexts)
+  machine-readable version of the above (21 rows, 3 eval contexts)
 - [`results/comparison.html`](../results/comparison.html) —
   test-split only leaderboard (backward-compatible)
 
@@ -134,11 +135,9 @@ Each experiment run has its own directory under `results/{model_id}/{timestamp}/
 | C2-phone (D1-style) | [`results/C2-superpoint-lightglue-phone/2026-04-04T01-50-55/`](../results/C2-superpoint-lightglue-phone/2026-04-04T01-50-55/) | Complete-mode: R@1=0.621 on 203 real photos |
 
 ### Infrastructure notes
-- Large binaries (`.pt`, `.npy`) are gitignored; checkpoints live on the remote machine
-- [`syamaner/vinylid-eval`](https://huggingface.co/syamaner/vinylid-eval/tree/main/results)
-  mirrors the above to HF Hub for external sharing
+- Large binaries (`.pt`, `.npy`) and `per_query.csv` files are gitignored
+- Checkpoints live on the remote machine only
 - Regenerate reports: `python scripts/compare_models.py`
-- Push to HF Hub: `python scripts/push_to_hub.py`
 
 ---
 
