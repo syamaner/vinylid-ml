@@ -75,15 +75,42 @@ If D1 is used server-side, **K=10 is the recommendation**.
 
 ---
 
-## Evaluation Infrastructure Notes
+## Result Files
 
-- **`results/`** — small artifacts (metrics.json, config.json, CSVs, HTMLs)
-  are tracked in git. Large binaries (`.pt`, `.npy`) are gitignored.
-- **`syamaner/vinylid-eval`** (HF Hub) — eval artifacts mirrored there for
-  external sharing. No model weights (A4-sscd is a public model; B-series
-  fine-tuned checkpoints underperformed and are not worth publishing).
-- HF Hub push: `python scripts/push_to_hub.py`
-- Multi-context comparison report: `python scripts/compare_models.py`
+### Cross-model comparison reports
+- [`results/multi_context_comparison.html`](../results/multi_context_comparison.html) —
+  full Sprint 3 leaderboard: test-split, phone-complete, and phone-sample in one page
+- [`results/multi_context_comparison.csv`](../results/multi_context_comparison.csv) —
+  machine-readable version of the above (11 rows, 3 eval contexts)
+- [`results/comparison.html`](../results/comparison.html) —
+  test-split only leaderboard (backward-compatible)
+
+### Raw summary CSVs
+- [`results/summary.csv`](../results/summary.csv) —
+  test-split eval: A/B/C/D series + D1 K-sweep rows
+- [`results/phone_eval_summary.csv`](../results/phone_eval_summary.csv) —
+  phone-complete eval: 203 real photos (#15)
+- [`results/phone_sample_eval_summary.csv`](../results/phone_sample_eval_summary.csv) —
+  phone-sample eval: 50 queries on same set as C2 sample-mode (#53)
+
+### Per-run artifacts (metrics.json + config.json)
+Each experiment run has its own directory under `results/{model_id}/{timestamp}/`:
+
+| Model | Key run | Notes |
+|---|---|---|
+| A4-sscd | [`results/A4-sscd/2026-03-14T23-04-25/`](../results/A4-sscd/2026-03-14T23-04-25/) | Best global model for real photos |
+| A1-dinov2-cls | [`results/A1-dinov2-cls/2026-03-14T22-54-54/`](../results/A1-dinov2-cls/2026-03-14T22-54-54/) | Best test-split, worst real-world |
+| D1-sscd-lg-k10 | [`results/D1-sscd-lightglue-k10/2026-04-04T01-02-36/`](../results/D1-sscd-lightglue-k10/2026-04-04T01-02-36/) | Server-side sweet spot |
+| D1-sscd-lg-k50 | `results/D1-sscd-lightglue-k50/` (on remote, #13) | Reference K=50 run |
+| B2c-dinov2-supcon | [`results/B2c-dinov2-supcon/2026-03-29T09-21-45/`](../results/B2c-dinov2-supcon/2026-03-29T09-21-45/) | Best fine-tuned model (didn’t beat zero-shot) |
+| C2-superpoint-lg | [`results/C2-superpoint-lightglue/2026-03-15T19-55-25/`](../results/C2-superpoint-lightglue/2026-03-15T19-55-25/) | Sample-mode C2 reference |
+
+### Infrastructure notes
+- Large binaries (`.pt`, `.npy`) are gitignored; checkpoints live on the remote machine
+- [`syamaner/vinylid-eval`](https://huggingface.co/syamaner/vinylid-eval/tree/main/results)
+  mirrors the above to HF Hub for external sharing
+- Regenerate reports: `python scripts/compare_models.py`
+- Push to HF Hub: `python scripts/push_to_hub.py`
 
 ---
 
