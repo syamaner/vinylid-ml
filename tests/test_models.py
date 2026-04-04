@@ -144,13 +144,32 @@ class TestModelProperties:
         assert model.embedding_dim == 512
 
     def test_sscd_model_id(self) -> None:
-        """SSCD wrapper reports correct model ID."""
+        """SSCD wrapper reports correct model ID for disc_mixup variant."""
         model = SSCDEmbedder.__new__(SSCDEmbedder)
+        model._variant = "sscd_disc_mixup"
+        assert model.model_id == "A4-sscd"
+
+    def test_sscd_blur_model_id(self) -> None:
+        """SSCD disc_blur variant reports A5-sscd-blur model ID."""
+        model = SSCDEmbedder.__new__(SSCDEmbedder)
+        model._variant = "sscd_disc_blur"
+        assert model.model_id == "A5-sscd-blur"
+
+    def test_sscd_large_model_id_falls_back(self) -> None:
+        """SSCD disc_large variant falls back to A4-sscd model ID."""
+        model = SSCDEmbedder.__new__(SSCDEmbedder)
+        model._variant = "sscd_disc_large"
         assert model.model_id == "A4-sscd"
 
     def test_sscd_embedding_dim(self) -> None:
         """SSCD wrapper reports 512-dim embeddings."""
         model = SSCDEmbedder.__new__(SSCDEmbedder)
+        assert model.embedding_dim == 512
+
+    def test_sscd_blur_embedding_dim(self) -> None:
+        """SSCD blur wrapper also reports 512-dim embeddings."""
+        model = SSCDEmbedder.__new__(SSCDEmbedder)
+        model._variant = "sscd_disc_blur"
         assert model.embedding_dim == 512
 
     def test_all_are_embedding_models(self) -> None:

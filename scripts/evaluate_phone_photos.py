@@ -36,6 +36,7 @@ Usage::
 
 # pyright: reportUnknownMemberType=false
 # pyright: reportUnknownArgumentType=false
+# pyright: reportUnknownVariableType=false
 
 from __future__ import annotations
 
@@ -44,6 +45,7 @@ import csv
 import json
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -55,7 +57,10 @@ import yaml
 from numpy.typing import NDArray
 from PIL import Image as PILImage
 from PIL import ImageOps
+from torchvision import transforms
+from torchvision.transforms import functional as TF  # noqa: N812
 
+from vinylid_ml.apple_featureprint import FEATUREPRINT_MODEL_ID, extract_feature_vector
 from vinylid_ml.dataset import load_manifest, load_splits
 from vinylid_ml.eval_metrics import RetrievalMetrics, compute_retrieval_metrics
 from vinylid_ml.gallery import load_embeddings
@@ -70,6 +75,30 @@ _DEFAULT_MATCH_SCORE_MIN: int = 60
 # Evaluation set choices.
 _EVAL_SET_COMPLETE: str = "complete"
 _EVAL_SET_SAMPLE: str = "sample"
+
+# All model IDs accepted by evaluate_phone_photos.py.
+# A3-featureprint (macOS-only, Apple Vision) is listed here but not in ALL_MODEL_IDS.
+_PHONE_EVAL_MODEL_IDS: tuple[str, ...] = (*ALL_MODEL_IDS, FEATUREPRINT_MODEL_ID)
+
+# All known canonical model IDs, ordered longest-first to avoid prefix collisions
+# when extracting a canonical model_id from a run_label (e.g. A4-sscd-tta5 -> A4-sscd).
+_KNOWN_CANONICAL_IDS: tuple[str, ...] = (
+    "A1-dinov2-cls-518",
+    "A1-dinov2-gem-518",
+    "A1-dinov2-cls",
+    "A1-dinov2-gem",
+    "A2-openclip",
+    FEATUREPRINT_MODEL_ID,
+    "A4-sscd",
+    "A5-sscd-blur",
+    "B1-mobilenet_v3_small-supcon",
+    "B2c-dinov2-supcon",
+    "B2-dinov2-supcon",
+    "B3-sscd-supcon",
+    "C2-superpoint-lightglue",
+    "C1-dinov2-patch",
+    "E1-sscd-projhead",
+)
 
 
 def _get_git_sha() -> str | None:
@@ -168,9 +197,85 @@ def _select_gallery_for_phone_eval(
     return gallery_paths, gallery_album_ids
 
 
+def _extract_canonical_model_id(run_label: str) -> str:
+    """Extract the canonical model ID from a run label.
+
+    Run labels encode inference settings as suffixes, e.g.
+    ``"A4-sscd-tta5-aqe5a0.5"`` -> ``"A4-sscd"``.  Uses
+    ``_KNOWN_CANONICAL_IDS`` (longest-first) to find the matching prefix.
+
+    Args:
+        run_label: Run label string (may be identical to model_id for baseline runs).
+
+    Returns:
+        Canonical model ID string, or ``run_label`` unchanged if unrecognised.
+    """
+    for mid in _KNOWN_CANONICAL_IDS:
+        if (
+            run_label == mid
+            or run_label.startswith(mid + "-tta")
+            or run_label.startswith(mid + "-aqe")
+        ):
+            return mid
+    return run_label
+
+
+_SUMMARY_CSV_FIELDNAMES: tuple[str, ...] = (
+    "model_id",
+    "run_label",
+    "timestamp",
+    "recall_at_1",
+    "recall_at_5",
+    "map_at_5",
+    "mrr",
+    "num_gallery",
+    "num_queries",
+)
+
+
+def _migrate_summary_csv_if_needed(path: Path) -> None:
+    """Upgrade an 8-column summary CSV (no ``run_label``) to the 9-column schema.
+
+    Reads all existing rows, backfills ``run_label`` and splits the canonical
+    ``model_id`` from the old ``model_id`` column (which may have encoded TTA/QE
+    settings as suffixes).  Rewrites the file with the new header.  No-op if
+    the file already contains a ``run_label`` column.
+
+    Args:
+        path: Absolute path to the summary CSV file.
+    """
+    with path.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        existing_fields = list(reader.fieldnames or [])
+        if "run_label" in existing_fields:
+            return  # already on new schema
+        rows = list(reader)
+
+    logger.info("migrating_summary_csv_schema", path=str(path), n_rows=len(rows))
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(_SUMMARY_CSV_FIELDNAMES))
+        writer.writeheader()
+        for r in rows:
+            old_label = r.get("model_id", "")
+            canonical = _extract_canonical_model_id(old_label)
+            writer.writerow(
+                {
+                    "model_id": canonical,
+                    "run_label": old_label,
+                    **{
+                        k: r.get(k, "")
+                        for k in _SUMMARY_CSV_FIELDNAMES
+                        if k not in ("model_id", "run_label")
+                    },
+                }
+            )
+    logger.info("summary_csv_schema_migrated", path=str(path))
+
+
 def _append_summary_csv(
     results_dir: Path,
     model_id: str,
+    run_label: str,
     timestamp: str,
     metrics: dict[str, object],
     num_gallery: int,
@@ -179,9 +284,15 @@ def _append_summary_csv(
 ) -> None:
     """Append a row to a phone evaluation summary CSV.
 
+    Automatically migrates files that use the legacy 8-column schema
+    (without ``run_label``) to the current 9-column schema before appending.
+
     Args:
         results_dir: Top-level results directory.
-        model_id: Model identifier.
+        model_id: Canonical model identifier (e.g. ``"A4-sscd"``).
+        run_label: Descriptive run label including inference settings
+            (e.g. ``"A4-sscd-tta5-aqe5a0.5"``).  Equal to ``model_id`` for
+            baseline runs with no TTA or alpha-QE.
         timestamp: Run timestamp string.
         metrics: Metrics dict (retrieval sub-dict).
         num_gallery: Number of gallery items.
@@ -191,6 +302,8 @@ def _append_summary_csv(
             ``"phone_sample_eval_summary.csv"`` for sample-mode runs.
     """
     summary_path = results_dir / summary_csv_name
+    if summary_path.exists():
+        _migrate_summary_csv_if_needed(summary_path)
     write_header = not summary_path.exists()
 
     retrieval = metrics.get("retrieval", metrics)
@@ -199,6 +312,7 @@ def _append_summary_csv(
 
     row: dict[str, object] = {
         "model_id": model_id,
+        "run_label": run_label,
         "timestamp": timestamp,
         "recall_at_1": retrieval.get("recall_at_1", ""),
         "recall_at_5": retrieval.get("recall_at_5", ""),
@@ -208,21 +322,173 @@ def _append_summary_csv(
         "num_queries": num_queries,
     }
 
-    fieldnames = [
-        "model_id",
-        "timestamp",
-        "recall_at_1",
-        "recall_at_5",
-        "map_at_5",
-        "mrr",
-        "num_gallery",
-        "num_queries",
-    ]
     with summary_path.open("a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=list(_SUMMARY_CSV_FIELDNAMES))
         if write_header:
             writer.writeheader()
         writer.writerow(row)
+
+
+def _tta_aug(img: PILImage.Image, aug_idx: int) -> PILImage.Image:
+    """Apply a fixed, deterministic augmentation by index for TTA.
+
+    Index 0 is always the identity (original image). Indices 1-4 apply mild
+    augmentations targeting the glare, blur, and exposure variance seen in
+    real phone photos of physical album covers.
+
+    Args:
+        img: PIL Image to augment.
+        aug_idx: Augmentation index (0 = identity, 1-4 = mild augmentations).
+
+    Returns:
+        Augmented PIL Image (same object for index 0; new object otherwise).
+    """
+    if aug_idx == 0:
+        return img
+    if aug_idx == 1:
+        return TF.hflip(img)  # type: ignore[return-value, arg-type]
+    if aug_idx == 2:
+        return TF.rotate(img, angle=5, interpolation=transforms.InterpolationMode.BILINEAR)  # type: ignore[return-value, arg-type]
+    if aug_idx == 3:
+        return TF.rotate(img, angle=-5, interpolation=transforms.InterpolationMode.BILINEAR)  # type: ignore[return-value, arg-type]
+    if aug_idx == 4:
+        return TF.adjust_brightness(img, brightness_factor=1.15)  # type: ignore[return-value, arg-type]
+    return img
+
+
+def _embed_single_image(
+    img: PILImage.Image,
+    model: EmbeddingModel,
+    tfm: transforms.Compose,
+) -> NDArray[np.float32]:
+    """Embed one PIL image with a tensor-based EmbeddingModel.
+
+    Args:
+        img: PIL Image (RGB, EXIF-stripped).
+        model: EmbeddingModel to use.
+        tfm: Model-specific preprocessing transform.
+
+    Returns:
+        L2-normalized float32 embedding of shape ``(D,)``.
+    """
+    tensor: torch.Tensor = tfm(img)  # type: ignore[assignment]
+    return model.embed(tensor.unsqueeze(0)).numpy()[0].astype(np.float32)
+
+
+def _embed_single_image_a3(img: PILImage.Image) -> NDArray[np.float32]:
+    """Embed one PIL image using Apple FeaturePrint (A3) via a temp file.
+
+    Writes the EXIF-stripped image to a temporary JPEG, runs
+    ``VNGenerateImageFeaturePrintRequest``, then deletes the file.
+    The returned vector is L2-normalized.
+
+    Args:
+        img: EXIF-stripped PIL Image to embed.
+
+    Returns:
+        L2-normalized float32 FeaturePrint embedding of shape ``(D,)``.
+
+    Raises:
+        ImportError: If ``pyobjc-framework-Vision`` is not installed.
+        RuntimeError: If the Vision request fails.
+    """
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        img.save(tmp_path, format="JPEG", quality=95)
+        vec = extract_feature_vector(tmp_path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+    norm = float(np.linalg.norm(vec))
+    return (vec / norm if norm > 0 else vec).astype(np.float32)
+
+
+def _embed_with_tta(
+    img: PILImage.Image,
+    model_id: str,
+    model: EmbeddingModel | None,
+    tfm: transforms.Compose | None,
+    n_augs: int,
+) -> NDArray[np.float32]:
+    """Embed a query image with test-time augmentation (TTA).
+
+    Applies ``n_augs`` deterministic augmentations (including the original at
+    index 0), embeds each view, and returns the L2-normalised mean embedding.
+    Supports both tensor-based models and A3-featureprint (macOS-only).
+
+    Args:
+        img: EXIF-stripped PIL Image to embed.
+        model_id: Model identifier (e.g. ``"A4-sscd"`` or ``"A3-featureprint"``).
+        model: EmbeddingModel instance; ``None`` for A3-featureprint.
+        tfm: Model preprocessing transform; ``None`` for A3-featureprint.
+        n_augs: Number of augmented views including the original (1 = no TTA).
+
+    Returns:
+        L2-normalized float32 mean embedding of shape ``(D,)``.
+    """
+    is_a3 = model_id == FEATUREPRINT_MODEL_ID
+    embeddings: list[NDArray[np.float32]] = []
+
+    for aug_idx in range(n_augs):
+        aug_img = _tta_aug(img, aug_idx)
+        if is_a3:
+            emb = _embed_single_image_a3(aug_img)
+        else:
+            if model is None or tfm is None:
+                raise ValueError("model and tfm are required for non-A3 models")
+            emb = _embed_single_image(aug_img, model, tfm)
+        embeddings.append(emb)
+
+    mean_emb: NDArray[np.float32] = np.mean(np.stack(embeddings, axis=0), axis=0).astype(np.float32)
+    norm = float(np.linalg.norm(mean_emb))
+    return mean_emb / norm if norm > 0 else mean_emb
+
+
+def _apply_alpha_qe(
+    query_matrix: NDArray[np.float32],
+    gallery_matrix: NDArray[np.float32],
+    k: int,
+    alpha: float,
+) -> NDArray[np.float32]:
+    """Apply alpha query expansion (alpha-QE) to the query embedding matrix.
+
+    For each query, blends it with the L2-normalised mean of its top-k gallery
+    neighbours, then re-normalises. This shifts each query towards the dense
+    cluster of its nearest neighbours, reducing the domain gap between phone
+    photos and catalogue images.
+
+    Reference: Chum et al., "Total Recall II: Query Expansion Revisited",
+    CVPR 2011.
+
+    Args:
+        query_matrix: L2-normalised query embeddings, shape ``(Q, D)``.
+        gallery_matrix: L2-normalised gallery embeddings, shape ``(G, D)``.
+        k: Number of top gallery neighbours to blend per query.
+        alpha: Blend weight for the gallery mean (0 = no change, 1 = full).
+
+    Returns:
+        Updated query matrix of shape ``(Q, D)`` with L2-normalised rows.
+    """
+    # Compute initial similarities for QE retrieval
+    scores: NDArray[np.float32] = query_matrix @ gallery_matrix.T
+    expanded = np.empty_like(query_matrix)
+    # Cap k to gallery size to avoid argpartition errors on small galleries
+    top_k = min(k, gallery_matrix.shape[0])
+
+    for qi in range(len(query_matrix)):
+        # Use argpartition O(G) instead of argsort O(G log G) for top-k selection,
+        # then sort only the k candidates for a deterministic order.
+        candidate_idx = np.argpartition(scores[qi], -top_k)[-top_k:]
+        local_order = np.argsort(-scores[qi][candidate_idx])
+        top_k_idx = candidate_idx[local_order]
+        gallery_mean = gallery_matrix[top_k_idx].mean(axis=0)
+        blended = query_matrix[qi] + alpha * gallery_mean
+        norm = float(np.linalg.norm(blended))
+        expanded[qi] = (blended / norm if norm > 0 else query_matrix[qi]).astype(np.float32)
+
+    return expanded
 
 
 def evaluate_model(
@@ -237,33 +503,73 @@ def evaluate_model(
     timestamp: str,
     match_score_min: int,
     eval_set: str = _EVAL_SET_COMPLETE,
-    model: object = None,  # pre-loaded model; loaded lazily if None
+    model: object = None,  # pre-loaded EmbeddingModel; loaded lazily if None
+    use_tta: bool = False,
+    n_tta_augs: int = 5,
+    use_alpha_qe: bool = False,
+    alpha_qe_k: int = 5,
+    alpha_qe_alpha: float = 0.5,
 ) -> dict[str, object]:
-    """Evaluate a single global embedding model against phone photos.
+    """Evaluate a single embedding model against real-world phone photos.
+
+    Supports all models in ``_PHONE_EVAL_MODEL_IDS`` including A3-featureprint
+    (macOS-only, Apple Vision framework) and the SSCD disc_blur variant (A5).
+    Optional inference-time enhancements:
+
+    - **TTA** (``use_tta``): embeds ``n_tta_augs`` deterministic augmentations
+      of each query image and returns the L2-normalised mean embedding.
+    - **Alpha-QE** (``use_alpha_qe``): after initial query embedding, blends
+      each query with the mean of its top-k gallery neighbours before re-ranking.
 
     Args:
-        model_id: Model identifier (e.g. ``"A4-sscd"``).
-        test_complete_matched_csv: Path to the matched photos CSV
-            (``test_complete_matched.csv`` or ``test_sample_matched.csv``).
+        model_id: Model identifier (e.g. ``"A4-sscd"``, ``"A3-featureprint"``).
+        test_complete_matched_csv: Path to the matched photos CSV.
         test_complete_dir: Directory containing the phone photo files.
         data_dir: Data directory with pre-computed gallery embeddings.
         gallery_paths_str: Ordered list of gallery image path strings.
         gallery_album_ids: Album IDs aligned with gallery_paths_str.
-        gallery_root: Absolute gallery root path.  Used to resolve relative
-            ``image_path`` strings from the manifest when doing on-the-fly
-            embedding of extra (non-precomputed) gallery albums.
+        gallery_root: Absolute gallery root path used to resolve relative
+            ``image_path`` strings for on-the-fly gallery embedding.
         results_dir: Top-level results directory.
         timestamp: ISO-style timestamp string.
         match_score_min: Minimum fuzzy-match score to include a photo.
-        eval_set: Evaluation set identifier — ``"complete"`` or ``"sample"``.
-            Controls run directory name and summary CSV target.
+        eval_set: ``"complete"`` (default) or ``"sample"``.
+        model: Pre-loaded EmbeddingModel; loaded lazily if ``None``.
+            Ignored for A3-featureprint.
+        use_tta: If ``True``, average embeddings from ``n_tta_augs`` views.
+        n_tta_augs: Number of TTA views including original. Default 5.
+        use_alpha_qe: If ``True``, apply alpha query expansion before ranking.
+        alpha_qe_k: Number of top gallery neighbours to blend. Default 5.
+        alpha_qe_alpha: Blend weight for the gallery mean. Default 0.5.
 
     Returns:
         Metrics dict with ``"retrieval"`` sub-dict.
     """
-    logger.info("evaluate_model_start", model_id=model_id)
+    logger.info(
+        "evaluate_model_start",
+        model_id=model_id,
+        use_tta=use_tta,
+        n_tta_augs=n_tta_augs if use_tta else None,
+        use_alpha_qe=use_alpha_qe,
+        alpha_qe_k=alpha_qe_k if use_alpha_qe else None,
+        alpha_qe_alpha=alpha_qe_alpha if use_alpha_qe else None,
+    )
+
+    is_a3 = model_id == FEATUREPRINT_MODEL_ID
+
+    # Derive a descriptive run label encoding model + inference settings
+    run_label = model_id
+    if use_tta:
+        run_label += f"-tta{n_tta_augs}"
+    if use_alpha_qe:
+        run_label += f"-aqe{alpha_qe_k}a{alpha_qe_alpha:.1f}"
 
     # ── Load pre-computed gallery embeddings ──────────────────────────────
+    hint = (
+        "Run embed_featureprint.py --config ... first"
+        if is_a3
+        else f"Run embed_gallery.py --model {model_id} --split test first"
+    )
     try:
         gallery_result = load_embeddings(data_dir, model_id)
     except FileNotFoundError:
@@ -271,7 +577,7 @@ def evaluate_model(
             "gallery_embeddings_not_found",
             model_id=model_id,
             data_dir=str(data_dir),
-            hint=f"Run embed_gallery.py --model {model_id} --split test first",
+            hint=hint,
         )
         raise
 
@@ -281,15 +587,18 @@ def evaluate_model(
         for i, p in enumerate(gallery_result.image_paths)
     }
 
-    # ── Load model (needed for on-the-fly gallery embedding of extra albums) ─
-    loaded_model: EmbeddingModel = (
-        model  # type: ignore[assignment]
-        if isinstance(model, EmbeddingModel)
-        else _create_model(model_id)
-    )
-    tfm = loaded_model.get_transforms()
+    # ── Load model (tensor-based models only; A3 uses Vision framework) ───
+    loaded_model: EmbeddingModel | None = None
+    tfm: transforms.Compose | None = None
+    if not is_a3:
+        loaded_model = (
+            model  # type: ignore[assignment]
+            if isinstance(model, EmbeddingModel)
+            else _create_model(model_id)
+        )
+        tfm = loaded_model.get_transforms()
 
-    # Align gallery embeddings with our canonical gallery order.
+    # ── Align gallery embeddings with canonical gallery order ─────────────
     # Extra albums (not in pre-computed embeddings) are embedded on-the-fly.
     gallery_embeddings: list[NDArray[np.float32]] = []
     valid_gallery_paths: list[str] = []
@@ -303,20 +612,24 @@ def evaluate_model(
             n_cached += 1
         else:
             # Extra album not in pre-computed embeddings — embed on-the-fly.
-            # Resolve relative paths against gallery_root (manifest paths are
-            # absolute when produced by prepare_dataset.py but may be relative
-            # in test/dev environments).
             gpath_resolved = Path(gpath) if Path(gpath).is_absolute() else gallery_root / gpath
             try:
-                with PILImage.open(gpath_resolved) as img:
-                    img.load()
-                    clean = PILImage.new(img.mode, img.size)
-                    clean.paste(img)
-                clean = clean.convert("RGB")
-                t: torch.Tensor = tfm(clean)  # type: ignore[assignment]
-                emb = loaded_model.embed(t.unsqueeze(0)).numpy()[0].astype(np.float32)
+                if is_a3:
+                    vec = extract_feature_vector(gpath_resolved)
+                    norm = float(np.linalg.norm(vec))
+                    emb = (vec / norm if norm > 0 else vec).astype(np.float32)
+                else:
+                    if loaded_model is None or tfm is None:
+                        raise ValueError("model and tfm must be set for non-A3 gallery embedding")
+                    with PILImage.open(gpath_resolved) as img:
+                        img.load()
+                        clean = PILImage.new(img.mode, img.size)
+                        clean.paste(img)
+                    clean = clean.convert("RGB")
+                    t: torch.Tensor = tfm(clean)  # type: ignore[assignment]
+                    emb = loaded_model.embed(t.unsqueeze(0)).numpy()[0].astype(np.float32)
                 n_live += 1
-            except (OSError, ValueError, RuntimeError) as exc:
+            except (OSError, ValueError, RuntimeError, ImportError) as exc:
                 logger.debug("extra_gallery_embed_error", path=str(gpath_resolved), error=str(exc))
                 continue
         gallery_embeddings.append(emb)
@@ -375,20 +688,23 @@ def evaluate_model(
         photo_path = test_complete_dir / filename
 
         if album_id not in album_to_label:
-            # Phone photo's album not in test-split gallery — skip
             logger.debug("phone_album_not_in_gallery", album_id=album_id)
             continue
 
         try:
-            # Strip EXIF in-memory — never modify original
             img = _load_phone_photo_stripped(photo_path)
         except (OSError, ValueError) as exc:
             logger.warning("photo_load_error", filename=filename, error=str(exc))
             continue
 
-        tensor: torch.Tensor = tfm(img)  # type: ignore[assignment]
-        batch = tensor.unsqueeze(0)
-        emb = loaded_model.embed(batch).numpy()[0].astype(np.float32)
+        if use_tta:
+            emb = _embed_with_tta(img, model_id, loaded_model, tfm, n_tta_augs)
+        elif is_a3:
+            emb = _embed_single_image_a3(img)
+        else:
+            if loaded_model is None or tfm is None:
+                raise ValueError("model and tfm must be set for non-A3 query embedding")
+            emb = _embed_single_image(img, loaded_model, tfm)
 
         query_embeddings.append(emb)
         query_labels_list.append(album_to_label[album_id])
@@ -410,7 +726,17 @@ def evaluate_model(
     num_queries = len(query_labels)
     total_elapsed = time.monotonic() - t0
 
-    # ── Cosine similarity + metrics ──────────────────────────────────────────────
+    # ── Alpha-QE: shift queries towards gallery cluster before ranking ────
+    if use_alpha_qe:
+        logger.info(
+            "alpha_qe_start",
+            model_id=model_id,
+            k=alpha_qe_k,
+            alpha=alpha_qe_alpha,
+        )
+        query_matrix = _apply_alpha_qe(query_matrix, gallery_matrix, alpha_qe_k, alpha_qe_alpha)
+
+    # ── Cosine similarity + retrieval metrics ─────────────────────────────
     score_matrix = query_matrix @ gallery_matrix.T
     ret: RetrievalMetrics = compute_retrieval_metrics(score_matrix, query_labels, gallery_labels)
     metrics: dict[str, float | int] = ret.to_dict()
@@ -418,7 +744,7 @@ def evaluate_model(
 
     logger.info(
         "model_results",
-        model_id=model_id,
+        run_label=run_label,
         R_at_1=round(float(metrics["recall_at_1"]), 4),
         R_at_5=round(float(metrics["recall_at_5"]), 4),
         mAP_at_5=round(float(metrics["map_at_5"]), 4),
@@ -429,12 +755,13 @@ def evaluate_model(
 
     # ── Save results ──────────────────────────────────────────────────────
     run_dir_suffix = "phone-sample" if eval_set == _EVAL_SET_SAMPLE else "phone"
-    run_dir = results_dir / f"{model_id}-{run_dir_suffix}" / timestamp
+    run_dir = results_dir / f"{run_label}-{run_dir_suffix}" / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
 
     eval_type = f"phone_photos_{eval_set}"
     out_metrics: dict[str, object] = {
         "model_id": model_id,
+        "run_label": run_label,
         "eval_type": eval_type,
         "eval_set": eval_set,
         "timestamp": timestamp,
@@ -448,6 +775,7 @@ def evaluate_model(
 
     out_config: dict[str, object] = {
         "model_id": model_id,
+        "run_label": run_label,
         "eval_type": eval_type,
         "eval_set": eval_set,
         "timestamp": timestamp,
@@ -455,6 +783,11 @@ def evaluate_model(
         "num_gallery": num_gallery,
         "num_queries": num_queries,
         "git_sha": _get_git_sha(),
+        "use_tta": use_tta,
+        "n_tta_augs": n_tta_augs if use_tta else None,
+        "use_alpha_qe": use_alpha_qe,
+        "alpha_qe_k": alpha_qe_k if use_alpha_qe else None,
+        "alpha_qe_alpha": alpha_qe_alpha if use_alpha_qe else None,
     }
     with (run_dir / "config.json").open("w") as f:
         json.dump(out_config, f, indent=2)
@@ -467,6 +800,7 @@ def evaluate_model(
     _append_summary_csv(
         results_dir,
         model_id,
+        run_label,
         timestamp,
         {"retrieval": dict(metrics)},
         num_gallery,
@@ -476,7 +810,7 @@ def evaluate_model(
 
     set_label = f"phone-{eval_set}"
     print(
-        f"\n{model_id} ({set_label}):\n"
+        f"\n{run_label} ({set_label}):\n"
         f"  R@1={float(metrics['recall_at_1']):.3f}  "
         f"R@5={float(metrics['recall_at_5']):.3f}  "
         f"mAP@5={float(metrics['map_at_5']):.3f}  "
@@ -540,8 +874,62 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Top-level results directory (default: results/).",
     )
+    # ── TTA flags ────────────────────────────────────────────────────────────
+    parser.add_argument(
+        "--tta",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable test-time augmentation (TTA): average embeddings from "
+            "--tta-n-augs deterministic views of each query image. Directly "
+            "targets glare, blur and exposure variance in phone captures."
+        ),
+    )
+    parser.add_argument(
+        "--tta-n-augs",
+        type=int,
+        default=5,
+        help=(
+            "Number of TTA views including the original (default: 5). "
+            "Views are: original, hflip, +5° rotation, -5° rotation, "
+            "brightness +15%%. Only used when --tta is set."
+        ),
+    )
+    # ── Alpha-QE flags ───────────────────────────────────────────────────────
+    parser.add_argument(
+        "--alpha-qe",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable alpha query expansion: blend each query embedding with the "
+            "mean of its top-k gallery neighbours before re-ranking. "
+            "See Chum et al., CVPR 2011."
+        ),
+    )
+    parser.add_argument(
+        "--alpha-qe-k",
+        type=int,
+        default=5,
+        help="Top-k gallery neighbours to blend per query for alpha-QE (default: 5).",
+    )
+    parser.add_argument(
+        "--alpha-qe-alpha",
+        type=float,
+        default=0.5,
+        help="Blend weight for the gallery mean in alpha-QE (default: 0.5).",
+    )
     args = parser.parse_args(argv)
     eval_set: str = args.eval_set
+
+    # ── Validate TTA / alpha-QE args ─────────────────────────────────────────
+    # Upper bound matches the number of defined _tta_aug views (indices 0-4).
+    if args.tta and not (1 <= args.tta_n_augs <= 5):
+        parser.error("--tta-n-augs must be in [1, 5]")
+    if args.alpha_qe and args.alpha_qe_k < 1:
+        parser.error("--alpha-qe-k must be >= 1")
+    # Allow 0.0: alpha=0 is a valid no-op (blended = q + 0*gallery_mean = q).
+    if args.alpha_qe and not (0.0 <= args.alpha_qe_alpha <= 2.0):
+        parser.error("--alpha-qe-alpha must be in [0, 2]")
 
     # ── Resolve model list ──────────────────────────────────────────────────
     if args.model is not None and args.models is not None:
@@ -552,12 +940,12 @@ def main(argv: list[str] | None = None) -> None:
     elif args.models is not None:
         model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
     else:
-        # Default: evaluate all global embedding models
+        # Default: evaluate all tensor-based models (A3 excluded — macOS only, opt-in)
         model_ids = list(ALL_MODEL_IDS)
 
     for mid in model_ids:
-        if mid not in ALL_MODEL_IDS:
-            parser.error(f"Unknown model ID '{mid}'. Valid IDs: {', '.join(ALL_MODEL_IDS)}")
+        if mid not in _PHONE_EVAL_MODEL_IDS:
+            parser.error(f"Unknown model ID '{mid}'. Valid IDs: {', '.join(_PHONE_EVAL_MODEL_IDS)}")
 
     # ── Load config ───────────────────────────────────────────────────
     config_path: Path = args.config.resolve()
@@ -670,6 +1058,11 @@ def main(argv: list[str] | None = None) -> None:
                 timestamp=timestamp,
                 match_score_min=args.match_score_min,
                 eval_set=eval_set,
+                use_tta=args.tta,
+                n_tta_augs=args.tta_n_augs,
+                use_alpha_qe=args.alpha_qe,
+                alpha_qe_k=args.alpha_qe_k,
+                alpha_qe_alpha=args.alpha_qe_alpha,
             )
             all_results.append(result)
         except (FileNotFoundError, ValueError) as exc:
@@ -683,11 +1076,11 @@ def main(argv: list[str] | None = None) -> None:
         print(f"PHONE PHOTO EVAL SUMMARY ({set_label})")
         print("=" * 60)
         for r in all_results:
-            mid = r["model_id"]
+            rlabel = r.get("run_label", r["model_id"])
             ret = r.get("retrieval", {})
             if isinstance(ret, dict):
                 print(
-                    f"  {mid:<25}  "
+                    f"  {rlabel!s:<35}  "
                     f"R@1={ret.get('recall_at_1', 0):.3f}  "
                     f"R@5={ret.get('recall_at_5', 0):.3f}  "
                     f"mAP@5={ret.get('map_at_5', 0):.3f}"

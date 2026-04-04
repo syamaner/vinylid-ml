@@ -34,6 +34,11 @@ Then open the linked state file for full context.
   - State: `docs/state/epics/15-phone-photo-eval.md`
   - Result: A4-sscd R@1=0.778 leads; C2 R@1=0.621 (cross-domain gap confirmed)
 
-## Sprint 4: CoreML + Index + E2E Integration
+## Sprint 4: Accuracy Push
 
-- Status: NOT STARTED
+- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — CLOSED (target not reached)
+  - State: `docs/state/epics/sprint4-accuracy-push.md`
+  - Best: A4-sscd-tta5-aqe5a0.5 R@1=0.783; production: A4-sscd zero-shot R@1=0.778
+  - Phase 2 projection head overfits (val R@1=0.405 peak; 161 pairs, 162K params)
+  - Phase 3 skipped (LightGlue already showed local matching hurts cross-domain)
+  - Root cause: data — 203 pairs insufficient for adaptation; need 1000+ or synthetic aug

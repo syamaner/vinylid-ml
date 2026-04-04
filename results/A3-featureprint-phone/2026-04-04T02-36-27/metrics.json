@@ -1,0 +1,18 @@
+{
+  "model_id": "A3-featureprint",
+  "run_label": "A3-featureprint",
+  "eval_type": "phone_photos_complete",
+  "eval_set": "complete",
+  "timestamp": "2026-04-04T02-36-27",
+  "git_sha": "6fc8024e78e573326f054a5be08c2d9d7829afa5",
+  "num_gallery": 979,
+  "num_queries": 203,
+  "retrieval": {
+    "recall_at_1": 0.4975369458128079,
+    "recall_at_5": 0.6502463054187192,
+    "map_at_5": 0.557471264367816,
+    "mrr": 0.5716831291757967,
+    "num_queries": 203,
+    "latency_per_query_s": 0.03
+  }
+}

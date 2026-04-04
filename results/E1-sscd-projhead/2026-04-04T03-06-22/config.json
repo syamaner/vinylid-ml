@@ -1,0 +1,19 @@
+{
+  "model_id": "E1-sscd-projhead",
+  "timestamp": "2026-04-04T03-06-22",
+  "git_sha": "08b237842e1a276ced48ab9ef94e8de05aaa9c48",
+  "seed": 42,
+  "epochs": 300,
+  "batch_size": 32,
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "temperature": 0.07,
+  "hidden_dim": 256,
+  "out_dim": 128,
+  "dropout": 0.2,
+  "val_fraction": 0.2,
+  "match_score_min": 60,
+  "backbone": "A4-sscd (frozen)",
+  "trainable_params": 164224,
+  "in_sample_eval": false
+}

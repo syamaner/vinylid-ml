@@ -10,8 +10,8 @@ paths:
   sqlite_db: /Volumes/nvme1/vinyl/vinylid/data/db/vinylid.db
 
   # Real-world test photos (offline — never committed to git)
-  test_complete: /Volumes/nvme1/vinyl/vinylid/test/complete
-  test_sample: /Volumes/nvme1/vinyl/vinylid/test/sample/input
+  test_complete: /Volumes/externalssd/vinyl/vinylid/test/complete
+  test_sample: /Volumes/externalssd/vinyl/vinylid/test/sample/input
 
   # Output directory for generated artifacts (relative to this file → <project>/data)
   output_dir: ../data
