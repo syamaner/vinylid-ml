@@ -375,10 +375,23 @@ def _load_cover_types(db_path: Path) -> dict[str, str]:
     We key on release_id since that's what we extract from EXIF.
     """
     conn = sqlite3.connect(str(db_path))
-    cursor = conn.cursor()
-    cursor.execute("SELECT ReleaseId, CoverType, Path FROM Covers")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT ReleaseId, CoverType, Path FROM Covers")
+        rows = cursor.fetchall()
+    except sqlite3.OperationalError as exc:
+        error_msg = str(exc)
+        if "no such table: covers" not in error_msg.lower():
+            raise
+        logger.warning(
+            "covers_table_unavailable",
+            db_path=str(db_path),
+            error=error_msg,
+            hint="CoverType metadata will be set to 'Unknown' for all images",
+        )
+        rows = []
+    finally:
+        conn.close()
 
     result: dict[str, str] = {}
     for release_id, cover_type, path_str in rows:

@@ -10,10 +10,12 @@ Then open the linked state file for full context.
 
 ## Sprint 2: Remaining Items (deferred)
 
-- **[#13] C2 full test-split eval** — NOT STARTED
-  - State: (no file yet — create when starting)
-- **[#15] Real phone photo eval (243 labeled)** — NOT STARTED
-  - State: (no file yet — create when starting)
+- **[#13] C2 full test-split eval** — DONE
+  - State: `docs/state/epics/13-c2-local-features.md`
+  - Result: R@1=0.875, R@5=0.900, mAP@5=0.886, MRR=0.887 (855 gallery, 4494 queries)
+- **[#15] Real phone photo eval (243 labeled)** — DONE
+  - State: `docs/state/epics/15-phone-photo-eval.md`
+  - Result: A4-sscd R@1=0.778 leads; C2 R@1=0.621 (cross-domain gap confirmed)
 
 ## Sprint 4: CoreML + Index + E2E Integration
 

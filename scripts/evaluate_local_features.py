@@ -46,6 +46,7 @@ import torch
 import yaml
 from numpy.typing import NDArray
 from PIL import Image as PILImage
+from PIL import ImageOps
 
 from vinylid_ml.dataset import load_manifest, load_splits
 from vinylid_ml.gallery import load_embeddings
@@ -217,8 +218,9 @@ def _append_summary_csv(
     metrics: dict[str, object],
     num_gallery: int,
     num_queries: int,
+    summary_csv_name: str = "summary.csv",
 ) -> None:
-    """Append a row to ``results/summary.csv`` for cross-model comparison.
+    """Append a row to a summary CSV for cross-model comparison.
 
     Args:
         results_dir: Top-level results directory.
@@ -227,8 +229,11 @@ def _append_summary_csv(
         metrics: Metrics dict with retrieval metrics under ``"retrieval"`` key.
         num_gallery: Number of gallery items.
         num_queries: Number of query items.
+        summary_csv_name: Filename for the summary CSV within ``results_dir``.
+            Defaults to ``"summary.csv"``; use ``"phone_eval_summary.csv"``
+            for complete-mode runs to keep phone-photo metrics separate.
     """
-    summary_path = results_dir / "summary.csv"
+    summary_path = results_dir / summary_csv_name
     write_header = not summary_path.exists()
 
     retrieval = metrics.get("retrieval", {})
@@ -372,6 +377,8 @@ def _mode_sample(
     sample_gallery_limit: int | None = None,
     top_k_sample: int = 50,
     precompute_gallery_tensors: bool = False,
+    suppress_per_query_csv: bool = False,
+    eval_mode: str = "sample",
 ) -> None:
     """Run --mode sample evaluation.
 
@@ -405,6 +412,14 @@ def _mode_sample(
             SSCD model unavailable.  0 = full pairwise (default: 50).
         precompute_gallery_tensors: If true, prepare all gallery tensors once on
             device before query matching. This is faster but uses more memory.
+        suppress_per_query_csv: If true, skip writing ``per_query.csv``. Set this
+            for ``--mode complete`` to avoid writing phone photo filenames to disk
+            (privacy guardrail).
+        eval_mode: Label written to ``metrics.json``, ``config.json``, and the
+            console banner.  Also controls the summary CSV target — ``"sample"``
+            appends to ``summary.csv``; ``"complete"`` appends to
+            ``phone_eval_summary.csv`` so phone-photo results are kept separate
+            from gallery-split sample results.
     """
     if not test_sample_matched_csv.exists():
         logger.error("sample_csv_not_found", path=str(test_sample_matched_csv))
@@ -517,8 +532,15 @@ def _mode_sample(
         query_labels.append(label)
 
         try:
-            with PILImage.open(photo_path) as _img:
-                photo_img = _img.convert("RGB")
+            # Apply EXIF orientation and strip metadata in-memory so portrait
+            # iPhone photos are correctly oriented. Pixel-only copy ensures
+            # no metadata is forwarded to SuperPoint / SSCD.
+            with PILImage.open(photo_path) as _raw:
+                _oriented = ImageOps.exif_transpose(_raw) or _raw
+                _oriented.load()
+                _clean = PILImage.new(_oriented.mode, _oriented.size)
+                _clean.paste(_oriented)
+            photo_img = _clean.convert("RGB")
             query_feat = matcher.extract_feature(photo_img)
         except (FileNotFoundError, RuntimeError, OSError) as exc:
             logger.warning("sample_photo_error", photo=filename, error=str(exc))
@@ -630,10 +652,10 @@ def _mode_sample(
     run_dir.mkdir(parents=True, exist_ok=True)
     _save_run_results(
         run_dir,
-        {"retrieval": metrics_dict, "mode": "sample"},
+        {"retrieval": metrics_dict, "mode": eval_mode},
         {
             "model_id": LOCAL_FEATURE_MODEL_ID,
-            "mode": "sample",
+            "mode": eval_mode,
             "timestamp": timestamp,
             "num_gallery": len(gallery_paths),
             "num_queries": num_valid,
@@ -643,8 +665,8 @@ def _mode_sample(
         },
     )
 
-    # Per-query CSV
-    if per_query_rows:
+    # Per-query CSV — suppressed in complete mode to protect phone photo filenames.
+    if per_query_rows and not suppress_per_query_csv:
         per_query_path = run_dir / "per_query.csv"
         fieldnames = ["filename", "true_album_id", "top1_album_id", "top1_matches", "correct"]
         with per_query_path.open("w", newline="") as f:
@@ -652,6 +674,9 @@ def _mode_sample(
             writer.writeheader()
             writer.writerows(per_query_rows)
 
+    _summary_csv = (
+        "phone_eval_summary.csv" if eval_mode == "complete" else "summary.csv"
+    )
     _append_summary_csv(
         results_dir,
         LOCAL_FEATURE_MODEL_ID,
@@ -659,10 +684,11 @@ def _mode_sample(
         {"retrieval": metrics_dict},
         len(gallery_paths),
         num_valid,
+        summary_csv_name=_summary_csv,
     )
 
     print(
-        f"\nC2 SuperPoint+LightGlue (sample mode, top-{top_k_sample} pre-filter):\n"
+        f"\nC2 SuperPoint+LightGlue ({eval_mode} mode, top-{top_k_sample} pre-filter):\n"
         f"  R@1={metrics_dict['recall_at_1']:.3f}  "
         f"R@5={metrics_dict['recall_at_5']:.3f}  "
         f"mAP@5={metrics_dict['map_at_5']:.3f}  "
@@ -876,8 +902,12 @@ def main(argv: list[str] | None = None) -> None:
         "--mode",
         type=str,
         required=True,
-        choices=["sample", "test"],
-        help="Evaluation mode: 'sample' (55-photo) or 'test' (full test split).",
+        choices=["sample", "test", "complete"],
+        help=(
+            "Evaluation mode: 'sample' (55-photo sample), "
+            "'test' (full test-split gallery/query), or "
+            "'complete' (243-photo real-world phone photos)."
+        ),
     )
     parser.add_argument(
         "--top-k",
@@ -959,9 +989,17 @@ def main(argv: list[str] | None = None) -> None:
     test_sample_dir = Path(str(config["paths"]["test_sample"]))
     if not test_sample_dir.is_absolute():
         test_sample_dir = (config_dir / test_sample_dir).resolve()
+
+    _tc_raw = config["paths"].get("test_complete")
+    test_complete_dir: Path | None = None
+    if _tc_raw is not None and str(_tc_raw).strip():
+        _tc_path = Path(str(_tc_raw))
+        test_complete_dir = _tc_path if _tc_path.is_absolute() else (config_dir / _tc_path).resolve()
+
     data_dir = (config_dir / config["paths"]["output_dir"]).resolve()
 
     test_sample_matched_csv = data_dir / "test_sample_matched.csv"
+    test_complete_matched_csv = data_dir / "test_complete_matched.csv"
     manifest_path = data_dir / "manifest.parquet"
     splits_path = data_dir / "splits.json"
 
@@ -1014,6 +1052,52 @@ def main(argv: list[str] | None = None) -> None:
             sample_gallery_limit=args.sample_gallery_limit,
             top_k_sample=args.top_k_sample,
             precompute_gallery_tensors=args.precompute_gallery_tensors,
+        )
+
+    elif args.mode == "complete":
+        # 243-photo real-world phone eval: reuses sample-mode logic with the
+        # complete test set CSV and directory.  Privacy guardrail: photo paths
+        # are never written to results — only aggregate metrics are saved.
+        if not test_complete_matched_csv.exists():
+            logger.error(
+                "test_complete_matched_csv_not_found",
+                path=str(test_complete_matched_csv),
+                hint="Run prepare_dataset.py first to generate test_complete_matched.csv",
+            )
+            sys.exit(1)
+        if test_complete_dir is None:
+            logger.error(
+                "test_complete_path_not_configured",
+                hint="Set paths.test_complete in your dataset config",
+            )
+            sys.exit(1)
+        if not test_complete_dir.exists():
+            logger.error(
+                "test_complete_dir_not_found",
+                path=str(test_complete_dir),
+            )
+            sys.exit(1)
+        run_dir = results_dir / f"{LOCAL_FEATURE_MODEL_ID}-phone" / timestamp
+        _mode_sample(
+            matcher=matcher,
+            gallery_paths=gallery_paths,
+            gallery_album_ids=gallery_album_ids,
+            manifest=manifest,
+            test_sample_dir=test_complete_dir,
+            test_sample_matched_csv=test_complete_matched_csv,
+            run_dir=run_dir,
+            results_dir=results_dir,
+            timestamp=timestamp,
+            feature_cache_dir=feature_cache_dir,
+            match_score_min=args.match_score_min,
+            data_dir=data_dir,
+            gallery_root=gallery_root,
+            sample_limit=args.sample_limit,
+            sample_gallery_limit=args.sample_gallery_limit,
+            top_k_sample=args.top_k_sample,
+            precompute_gallery_tensors=args.precompute_gallery_tensors,
+            suppress_per_query_csv=True,
+            eval_mode="complete",
         )
 
     elif args.mode == "test":
