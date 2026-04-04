@@ -23,16 +23,16 @@ domain as the gallery. Real phone photos are a different domain entirely.
 
 | Model | Test-split R@1 | Phone-complete R@1 | Delta |
 |---|---|---|---|
-| A1-dinov2-cls | 0.866 | 0.500 | −37pp |
+| A1-dinov2-cls | 0.866 | 0.650 | −22pp |
 | A4-sscd | **0.872** | **0.778** | −9pp |
 | C2 LightGlue (D1-style) | 0.880¹ | 0.621 | −26pp |
-| A2-openclip | 0.861 | 0.420 | −44pp |
+| A2-openclip | 0.861 | 0.601 | −26pp |
 
 ¹ Sample-mode R@1 on the curated 50-photo subset.
 *Test-split R@1 from committed per-run metrics.json (855 gallery, 4564 queries).*
 
-A4-sscd drops only 7pp because it was trained for copy detection
-(domain shift by design). All other approaches drop 26–42pp.
+A4-sscd drops only 9pp because it was trained for copy detection
+(domain shift by design). All other approaches still drop 22–26pp.
 
 ## Key Finding 2: Local Feature Matching Does Not Beat Global Embedding on Real Photos
 
