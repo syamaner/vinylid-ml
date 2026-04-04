@@ -1,0 +1,16 @@
+{
+  "model_id": "A5-sscd-blur",
+  "run_label": "A5-sscd-blur",
+  "eval_type": "phone_photos_complete",
+  "eval_set": "complete",
+  "timestamp": "2026-04-04T02-45-55",
+  "match_score_min": 60,
+  "num_gallery": 979,
+  "num_queries": 203,
+  "git_sha": "6fc8024e78e573326f054a5be08c2d9d7829afa5",
+  "use_tta": false,
+  "n_tta_augs": null,
+  "use_alpha_qe": false,
+  "alpha_qe_k": null,
+  "alpha_qe_alpha": null
+}

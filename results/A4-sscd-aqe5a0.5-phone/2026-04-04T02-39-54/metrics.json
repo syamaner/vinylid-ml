@@ -1,0 +1,18 @@
+{
+  "model_id": "A4-sscd",
+  "run_label": "A4-sscd-aqe5a0.5",
+  "eval_type": "phone_photos_complete",
+  "eval_set": "complete",
+  "timestamp": "2026-04-04T02-39-54",
+  "git_sha": "6fc8024e78e573326f054a5be08c2d9d7829afa5",
+  "num_gallery": 979,
+  "num_queries": 203,
+  "retrieval": {
+    "recall_at_1": 0.7733990147783252,
+    "recall_at_5": 0.7980295566502463,
+    "map_at_5": 0.7848932676518883,
+    "mrr": 0.7881203568353322,
+    "num_queries": 203,
+    "latency_per_query_s": 0.037
+  }
+}

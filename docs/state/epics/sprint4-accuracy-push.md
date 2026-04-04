@@ -4,41 +4,32 @@
 Reach R@1 > 0.90 on the 203-photo complete phone evaluation set (981-image gallery).
 Current best: A4-sscd R@1=0.778 (zero-shot).
 
-## Status: 🔄 Phase 1 Implementing
+## Status: ✅ Phase 1 Complete — Target NOT reached; proceeding to Phase 2
 
 Branch: `feature/sprint4-accuracy-push`
 
 ## Active Context
-Phase 1 code implementation complete:
-- `A5-sscd-blur` model added to `models.py` and `create_model()` factory
-- `evaluate_phone_photos.py` extended with A3-featureprint support, TTA, alpha-QE
-- All tests pass (318 unit), ruff clean, pyright clean
-- Awaiting evaluation runs on remote CUDA (A5) and locally (A3, TTA, alpha-QE)
+Phase 1 all 5 experiments completed locally on MPS (Apple M-series). No experiment
+reached the 0.90 target. A4-sscd (mixup) remains the best model by a wide margin.
+Proceeding to Phase 2: frozen SSCD backbone + MLP projection head.
 
-## Evaluation Runs Needed
+## Phase 1 Results
 
-### Phase 1a — Untested models on phone complete set (remote CUDA or local)
-| Model | Requires | Status |
-|-------|----------|--------|
-| A5-sscd-blur | `embed_gallery.py --model A5-sscd-blur` then `evaluate_phone_photos.py --model A5-sscd-blur` | Pending |
-| A3-featureprint | `embed_featureprint.py` then `evaluate_phone_photos.py --model A3-featureprint` | Pending (macOS) |
+| Run Label | R@1 | R@5 | mAP@5 | MRR | Notes |
+|-----------|-----|-----|-------|-----|-------|
+| A4-sscd (Sprint 3 baseline) | 0.778 | — | — | — | Remote CUDA |
+| A3-featureprint | 0.498 | 0.650 | 0.558 | 0.572 | Local MPS; gallery 979 |
+| A5-sscd-blur | 0.611 | 0.704 | 0.645 | 0.653 | Local MPS; gallery 979 |
+| A4-sscd-tta5 | 0.778 | 0.818 | 0.794 | 0.797 | TTA no change over baseline |
+| A4-sscd-aqe5a0.5 | 0.773 | 0.798 | 0.785 | 0.788 | QE alone slightly hurts |
+| **A4-sscd-tta5-aqe5a0.5** | **0.783** | **0.818** | **0.798** | **0.800** | Best Phase 1; +0.5pp |
 
-### Phase 1b — Inference-time improvements on A4-sscd (local)
-| Experiment | Command | Status |
-|------------|---------|--------|
-| TTA-5 on A4-sscd | `evaluate_phone_photos.py --model A4-sscd --tta --tta-n-augs 5` | Pending |
-| alpha-QE k=5 α=0.5 | `evaluate_phone_photos.py --model A4-sscd --alpha-qe` | Pending |
-| TTA+QE combined | `evaluate_phone_photos.py --model A4-sscd --tta --alpha-qe` | Pending |
-
-## Latest Results
-
-| Run Label | R@1 | R@5 | mAP@5 | Notes |
-|-----------|-----|-----|-------|-------|
-| A4-sscd (baseline) | 0.778 | — | — | Sprint 3 best on real phones |
-| A3-featureprint | TBD | — | — | Never run on phone set |
-| A5-sscd-blur | TBD | — | — | Never run; blur variant |
-| A4-sscd-tta5 | TBD | — | — | TTA not yet tried |
-| A4-sscd-aqe5a0.5 | TBD | — | — | Alpha-QE not yet tried |
+**Key findings:**
+- A4-sscd (mixup) is definitively the best SSCD variant; blur variant (A5) scores lower (0.611), suggesting blur augmentation does not match the phone-photo domain
+- A3-featureprint is weakest (0.498); general Apple Vision model, not copy-detection
+- TTA neither helped nor hurt alone; 5 mild augmentations do not reduce the domain gap
+- Alpha-QE alone slightly hurts (wrong top-k neighbours pulled in at 0.778 baseline quality)
+- TTA+QE combined ekes out +0.5pp to 0.783 by improving initial quality enough for QE
 
 ## Commands for Evaluation Runs
 

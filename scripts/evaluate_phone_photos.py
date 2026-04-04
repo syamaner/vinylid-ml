@@ -180,6 +180,7 @@ def _select_gallery_for_phone_eval(
 def _append_summary_csv(
     results_dir: Path,
     model_id: str,
+    run_label: str,
     timestamp: str,
     metrics: dict[str, object],
     num_gallery: int,
@@ -190,7 +191,10 @@ def _append_summary_csv(
 
     Args:
         results_dir: Top-level results directory.
-        model_id: Model identifier.
+        model_id: Canonical model identifier (e.g. ``"A4-sscd"``).
+        run_label: Descriptive run label including inference settings
+            (e.g. ``"A4-sscd-tta5-aqe5a0.5"``).  Equal to ``model_id`` for
+            baseline runs with no TTA or alpha-QE.
         timestamp: Run timestamp string.
         metrics: Metrics dict (retrieval sub-dict).
         num_gallery: Number of gallery items.
@@ -208,6 +212,7 @@ def _append_summary_csv(
 
     row: dict[str, object] = {
         "model_id": model_id,
+        "run_label": run_label,
         "timestamp": timestamp,
         "recall_at_1": retrieval.get("recall_at_1", ""),
         "recall_at_5": retrieval.get("recall_at_5", ""),
@@ -219,6 +224,7 @@ def _append_summary_csv(
 
     fieldnames = [
         "model_id",
+        "run_label",
         "timestamp",
         "recall_at_1",
         "recall_at_5",
@@ -379,9 +385,15 @@ def _apply_alpha_qe(
     # Compute initial similarities for QE retrieval
     scores: NDArray[np.float32] = query_matrix @ gallery_matrix.T
     expanded = np.empty_like(query_matrix)
+    # Cap k to gallery size to avoid argpartition errors on small galleries
+    top_k = min(k, gallery_matrix.shape[0])
 
     for qi in range(len(query_matrix)):
-        top_k_idx = np.argsort(-scores[qi])[:k]
+        # Use argpartition O(G) instead of argsort O(G log G) for top-k selection,
+        # then sort only the k candidates for a deterministic order.
+        candidate_idx = np.argpartition(scores[qi], -top_k)[-top_k:]
+        local_order = np.argsort(-scores[qi][candidate_idx])
+        top_k_idx = candidate_idx[local_order]
         gallery_mean = gallery_matrix[top_k_idx].mean(axis=0)
         blended = query_matrix[qi] + alpha * gallery_mean
         norm = float(np.linalg.norm(blended))
@@ -698,6 +710,7 @@ def evaluate_model(
     )
     _append_summary_csv(
         results_dir,
+        model_id,
         run_label,
         timestamp,
         {"retrieval": dict(metrics)},
@@ -820,12 +833,14 @@ def main(argv: list[str] | None = None) -> None:
     eval_set: str = args.eval_set
 
     # ── Validate TTA / alpha-QE args ─────────────────────────────────────────
-    if args.tta and args.tta_n_augs < 1:
-        parser.error("--tta-n-augs must be >= 1")
+    # Upper bound matches the number of defined _tta_aug views (indices 0-4).
+    if args.tta and not (1 <= args.tta_n_augs <= 5):
+        parser.error("--tta-n-augs must be in [1, 5]")
     if args.alpha_qe and args.alpha_qe_k < 1:
         parser.error("--alpha-qe-k must be >= 1")
-    if args.alpha_qe and not (0.0 < args.alpha_qe_alpha <= 2.0):
-        parser.error("--alpha-qe-alpha must be in (0, 2]")
+    # Allow 0.0: alpha=0 is a valid no-op (blended = q + 0*gallery_mean = q).
+    if args.alpha_qe and not (0.0 <= args.alpha_qe_alpha <= 2.0):
+        parser.error("--alpha-qe-alpha must be in [0, 2]")
 
     # ── Resolve model list ──────────────────────────────────────────────────
     if args.model is not None and args.models is not None:

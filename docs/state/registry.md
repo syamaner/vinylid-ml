@@ -36,7 +36,7 @@ Then open the linked state file for full context.
 
 ## Sprint 4: Accuracy Push
 
-- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — IN PROGRESS
+- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — IN PROGRESS (Phase 2)
   - State: `docs/state/epics/sprint4-accuracy-push.md`
-  - Phase 1 implementing: A5-sscd-blur, A3 phone eval, TTA, alpha-QE
-  - Baseline: A4-sscd R@1=0.778 (target: >0.90)
+  - Phase 1 done: best is A4-sscd-tta5-aqe5a0.5 at R@1=0.783 (target: >0.90)
+  - Phase 2 next: frozen SSCD + MLP projection head on 203 real phone pairs
