@@ -34,11 +34,22 @@ Then open the linked state file for full context.
   - State: `docs/state/epics/15-phone-photo-eval.md`
   - Result: A4-sscd R@1=0.778 leads; C2 R@1=0.621 (cross-domain gap confirmed)
 
-## Sprint 4: Accuracy Push
+## Sprint 4 (Unplanned): Accuracy Push
 
-- **[Sprint 4] Accuracy push — phone-photo gap to >0.90 R@1** — CLOSED (target not reached)
+- **[Sprint 4 Unplanned] Accuracy push — phone-photo gap to >0.90 R@1** — CLOSED (target not reached)
   - State: `docs/state/epics/sprint4-accuracy-push.md`
   - Best: A4-sscd-tta5-aqe5a0.5 R@1=0.783; production: A4-sscd zero-shot R@1=0.778
-  - Phase 2 projection head overfits (val R@1=0.405 peak; 161 pairs, 162K params)
-  - Phase 3 skipped (LightGlue already showed local matching hurts cross-domain)
+  - Failure analysis: 89% of 45 failures are semantic look-alike albums (not degradation)
   - Root cause: data — 203 pairs insufficient for adaptation; need 1000+ or synthetic aug
+
+## Sprint 4 (Planned): CoreML + Index + E2E Integration
+
+- **[#26] Rectangle detection + unwarp** — IN PROGRESS
+  - Branch: `feature/26-rectangle-detection-unwarp`
+  - State: `docs/state/epics/sprint4-coreml-e2e.md`
+  - Python: OpenCV contour detection + getPerspectiveTransform on 203 phone photos
+  - Swift: VNDetectRectanglesRequest + CIPerspectiveCorrection; fallback: user taps 4 corners
+- **[#24] CoreML conversion + quantization** — PENDING (#26 gates input contract)
+- **[#25] Gallery index build** — PENDING (can run parallel with #24)
+- **[#27] E2E evaluation + latency benchmarking** — PENDING
+- **[#28] Confidence threshold calibration** — PENDING
