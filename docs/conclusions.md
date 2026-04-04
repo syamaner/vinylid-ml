@@ -65,7 +65,7 @@ embeddings are more robust to these conditions.
 
 ### Optional server-side boost: D1 hybrid (A4-sscd + LightGlue, K=10)
 
-- Test-split: R@1=0.869 vs A4-sscd alone 0.850 (+2pp)
+- Test-split: R@1=0.869 vs A4-sscd alone 0.872 (−0.3pp)
 - Phone-sample: A4-sscd alone already hits 0.880 — LightGlue may not help
 - Latency: 0.10s/query on RTX 4090 — too slow for real-time on-device
 - **Only worth adding if offline/server-side re-ranking for edge cases**
